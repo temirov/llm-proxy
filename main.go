@@ -6,7 +6,7 @@ import (
 	"github.com/temirov/llm-proxy/cmd"
 )
 
-// main is the entry point for gpt-proxy.
+// main is the entry point for llm-proxy.
 func main() {
 	_ = gotenv.Load()
 
