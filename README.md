@@ -27,7 +27,7 @@ variables:
 
 ```bash
 SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx \
-  ./gpt-proxy --port=8080 --log_level=info
+  ./llm-proxy --port=8080 --log_level=info
 ```
 
 Once running, send a request with the secret key:
