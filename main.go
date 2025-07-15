@@ -1,4 +1,4 @@
-// main.go
+// Package main starts the llm-proxy application.
 package main
 
 import (
