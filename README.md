@@ -16,23 +16,31 @@ other services without embedding API credentials in each client.
 The service is configured entirely through command-line flags or environment
 variables:
 
-| Flag / Env            | Description                                     |
-|-----------------------|-------------------------------------------------|
+| Flag / Env                            | Description                                         |
+|---------------------------------------|-----------------------------------------------------|
 | `--service_secret` / `SERVICE_SECRET` | Shared secret required in the `key` query parameter |
-| `--openai_api_key` / `OPENAI_API_KEY` | OpenAI API key used for requests |
-| `--port` / `GPT_PORT` | Port for the HTTP server (default `8080`) |
-| `--log_level` / `LOG_LEVEL` | `debug` or `info` (default `info`) |
+| `--openai_api_key` / `OPENAI_API_KEY` | OpenAI API key used for requests                    |
+| `--port` / `GPT_PORT`                 | Port for the HTTP server (default `8080`)           |
+| `--log_level` / `LOG_LEVEL`           | `debug` or `info` (default `info`)                  |
 
 ## Running
 
-```bash
+A secret can be easily generated with the following command
+
+```shell
+openssl rand -hex 32
+```
+
+The service running command is
+
+```shell
 SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx \
   ./llm-proxy --port=8080 --log_level=info
 ```
 
 Once running, send a request with the secret key:
 
-```bash
+```shell
 curl "http://localhost:8080/?prompt=Hello&key=mysecret"
 ```
 
