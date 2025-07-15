@@ -68,7 +68,9 @@ func TestSecretMiddleware(t *testing.T) {
 func TestChatHandler_MissingPrompt(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.GET("/", chatHandler("ignored", "", zap.NewExample().Sugar()))
+	taskQueue := make(chan requestTask, 1)
+	defer close(taskQueue)
+	router.GET("/", chatHandler(taskQueue, "", zap.NewExample().Sugar()))
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/", nil)
@@ -98,8 +100,15 @@ func TestChatHandler_Success(t *testing.T) {
 	defer func() { http.DefaultClient = original }()
 
 	gin.SetMode(gin.TestMode)
+	taskQueue := make(chan requestTask, 1)
+	go func() {
+		for task := range taskQueue {
+			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
+			task.reply <- result{text: text, err: err}
+		}
+	}()
 	router := gin.New()
-	router.GET("/", chatHandler("ignored", "", zap.NewExample().Sugar()))
+	router.GET("/", chatHandler(taskQueue, "", zap.NewExample().Sugar()))
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/?prompt=anything", nil)
@@ -129,8 +138,16 @@ func TestChatHandler_APIError(t *testing.T) {
 	defer func() { http.DefaultClient = original }()
 
 	gin.SetMode(gin.TestMode)
+	taskQueue := make(chan requestTask, 1)
+	defer close(taskQueue)
+	go func() {
+		for task := range taskQueue {
+			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
+			task.reply <- result{text: text, err: err}
+		}
+	}()
 	router := gin.New()
-	router.GET("/", chatHandler("ignored", "", zap.NewExample().Sugar()))
+	router.GET("/", chatHandler(taskQueue, "", zap.NewExample().Sugar()))
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/?prompt=test", nil)
@@ -170,8 +187,16 @@ func TestChatHandler_SystemPromptOverride(t *testing.T) {
 	defer func() { http.DefaultClient = original }()
 
 	gin.SetMode(gin.TestMode)
+	taskQueue := make(chan requestTask, 1)
+	defer close(taskQueue)
+	go func() {
+		for task := range taskQueue {
+			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
+			task.reply <- result{text: text, err: err}
+		}
+	}()
 	router := gin.New()
-	router.GET("/", chatHandler("ignored", "default", zap.NewExample().Sugar()))
+	router.GET("/", chatHandler(taskQueue, "default", zap.NewExample().Sugar()))
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/?prompt=test&system_prompt=override", nil)
@@ -179,5 +204,27 @@ func TestChatHandler_SystemPromptOverride(t *testing.T) {
 
 	if got != "override" {
 		t.Errorf("system prompt = %q; want %q", got, "override")
+	}
+}
+
+func TestChatHandler_Timeout(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	taskQueue := make(chan requestTask, 1)
+	router := gin.New()
+	router.GET("/", chatHandler(taskQueue, "", zap.NewExample().Sugar()))
+
+	originalTimeout := requestTimeout
+	requestTimeout = 50 * time.Millisecond
+	defer func() { requestTimeout = originalTimeout }()
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest("GET", "/?prompt=test", nil)
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusGatewayTimeout {
+		t.Errorf("timeout code = %d; want %d", recorder.Code, http.StatusGatewayTimeout)
+	}
+	if body := recorder.Body.String(); body != "request timed out" {
+		t.Errorf("timeout body = %q; want %q", body, "request timed out")
 	}
 }
