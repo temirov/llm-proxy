@@ -43,6 +43,12 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 		if config.SystemPrompt == "" {
 			config.SystemPrompt = viper.GetString("system_prompt")
 		}
+		if config.WorkerCount == 0 {
+			config.WorkerCount = viper.GetInt("workers")
+		}
+		if config.QueueSize == 0 {
+			config.QueueSize = viper.GetInt("queue_size")
+		}
 
 		var logger *zap.Logger
 		normalizedLevel := strings.ToLower(config.LogLevel)
@@ -67,6 +73,8 @@ func init() {
 	viper.BindEnv("service_secret", "SERVICE_SECRET")
 	viper.BindEnv("log_level", "LOG_LEVEL")
 	viper.BindEnv("system_prompt", "SYSTEM_PROMPT")
+	viper.BindEnv("workers", "GPT_WORKERS")
+	viper.BindEnv("queue_size", "GPT_QUEUE_SIZE")
 
 	rootCmd.Flags().StringVar(
 		&config.ServiceSecret,
@@ -97,6 +105,18 @@ func init() {
 		"system_prompt",
 		"",
 		"system prompt sent to the model (env: SYSTEM_PROMPT)",
+	)
+	rootCmd.Flags().IntVar(
+		&config.WorkerCount,
+		"workers",
+		defaultWorkers,
+		"number of worker goroutines (env: GPT_WORKERS)",
+	)
+	rootCmd.Flags().IntVar(
+		&config.QueueSize,
+		"queue_size",
+		defaultQueueSize,
+		"request queue size (env: GPT_QUEUE_SIZE)",
 	)
 
 	viper.BindPFlags(rootCmd.Flags())
