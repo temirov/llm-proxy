@@ -41,7 +41,10 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx \
 Once running, send a request with the secret key:
 
 ```shell
-curl "http://localhost:8080/?prompt=Hello&key=mysecret"
+curl --get \
+  --data-urlencode "prompt=Hello, how are you?" \
+  --data-urlencode "key=mysecret" \
+  "http://localhost:8080/"
 ```
 
 The response body contains the model's reply as plain text.
