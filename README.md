@@ -22,6 +22,7 @@ variables:
 | `--openai_api_key` / `OPENAI_API_KEY` | OpenAI API key used for requests                    |
 | `--port` / `GPT_PORT`                 | Port for the HTTP server (default `8080`)           |
 | `--log_level` / `LOG_LEVEL`           | `debug` or `info` (default `info`)                  |
+| `--system_prompt` / `SYSTEM_PROMPT`   | Optional system prompt text                         |
 
 ## Running
 

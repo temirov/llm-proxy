@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -68,7 +69,7 @@ func TestSecretMiddleware(t *testing.T) {
 func TestChatHandler_MissingPrompt(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.GET("/", chatHandler("ignored", zap.NewExample().Sugar()))
+	router.GET("/", chatHandler("ignored", "", zap.NewExample().Sugar()))
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/", nil)
@@ -100,7 +101,7 @@ func TestChatHandler_Success(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.GET("/", chatHandler("ignored", zap.NewExample().Sugar()))
+	router.GET("/", chatHandler("ignored", "", zap.NewExample().Sugar()))
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/?prompt=anything", nil)
@@ -132,7 +133,7 @@ func TestChatHandler_APIError(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.GET("/", chatHandler("ignored", zap.NewExample().Sugar()))
+	router.GET("/", chatHandler("ignored", "", zap.NewExample().Sugar()))
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/?prompt=test", nil)
@@ -143,5 +144,43 @@ func TestChatHandler_APIError(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "OpenAI API error") {
 		t.Errorf("API error body = %q; want to contain %q", w.Body.String(), "OpenAI API error")
+	}
+}
+
+func TestChatHandler_SystemPromptOverride(t *testing.T) {
+	original := http.DefaultClient
+	var got string
+	http.DefaultClient = &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			body, _ := io.ReadAll(req.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			if msgs, ok := payload["messages"].([]any); ok && len(msgs) > 0 {
+				if m, ok := msgs[0].(map[string]any); ok {
+					if c, ok := m["content"].(string); ok {
+						got = c
+					}
+				}
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"ok"}}]}`)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+		Timeout: 5 * time.Second,
+	}
+	defer func() { http.DefaultClient = original }()
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/", chatHandler("ignored", "default", zap.NewExample().Sugar()))
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/?prompt=test&system_prompt=override", nil)
+	router.ServeHTTP(w, req)
+
+	if got != "override" {
+		t.Errorf("system prompt = %q; want %q", got, "override")
 	}
 }
