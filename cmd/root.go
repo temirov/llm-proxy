@@ -1,3 +1,4 @@
+// Package cmd implements the command-line interface for llm-proxy.
 package cmd
 
 import (
@@ -9,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var cfg Configuration
+var config Configuration
 
 // Execute runs the command-line interface.
 func Execute() {
@@ -27,27 +28,25 @@ var rootCmd = &cobra.Command{
 	Example: `llm-proxy --service_secret=mysecret --openai_api_key=sk-xxxxx --log_level=debug
 SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// fill in from env if flags didn't
-		if cfg.ServiceSecret == "" {
-			cfg.ServiceSecret = viper.GetString("service_secret")
+		if config.ServiceSecret == "" {
+			config.ServiceSecret = viper.GetString("service_secret")
 		}
-		if cfg.OpenAIKey == "" {
-			cfg.OpenAIKey = viper.GetString("openai_api_key")
+		if config.OpenAIKey == "" {
+			config.OpenAIKey = viper.GetString("openai_api_key")
 		}
-		if cfg.Port == 0 {
-			cfg.Port = viper.GetInt("port")
+		if config.Port == 0 {
+			config.Port = viper.GetInt("port")
 		}
-		if cfg.LogLevel == "" {
-			cfg.LogLevel = viper.GetString("log_level")
+		if config.LogLevel == "" {
+			config.LogLevel = viper.GetString("log_level")
 		}
-		if cfg.SystemPrompt == "" {
-			cfg.SystemPrompt = viper.GetString("system_prompt")
+		if config.SystemPrompt == "" {
+			config.SystemPrompt = viper.GetString("system_prompt")
 		}
 
-		// choose zap config based on log level
 		var logger *zap.Logger
-		lvl := strings.ToLower(cfg.LogLevel)
-		if lvl == "debug" {
+		normalizedLevel := strings.ToLower(config.LogLevel)
+		if normalizedLevel == "debug" {
 			logger, _ = zap.NewDevelopment()
 		} else {
 			logger, _ = zap.NewProduction()
@@ -55,8 +54,8 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 		defer logger.Sync()
 		sugar := logger.Sugar()
 
-		sugar.Infow("starting proxy", "port", cfg.Port, "log_level", lvl)
-		return serve(cfg, sugar)
+		sugar.Infow("starting proxy", "port", config.Port, "log_level", normalizedLevel)
+		return serve(config, sugar)
 	},
 }
 
@@ -64,38 +63,37 @@ func init() {
 	viper.SetEnvPrefix("gpt")
 	viper.AutomaticEnv()
 
-	// bind OPENAI_API_KEY, SERVICE_SECRET, LOG_LEVEL from environment
 	viper.BindEnv("openai_api_key", "OPENAI_API_KEY")
 	viper.BindEnv("service_secret", "SERVICE_SECRET")
 	viper.BindEnv("log_level", "LOG_LEVEL")
 	viper.BindEnv("system_prompt", "SYSTEM_PROMPT")
 
 	rootCmd.Flags().StringVar(
-		&cfg.ServiceSecret,
+		&config.ServiceSecret,
 		"service_secret",
 		"",
 		"shared secret for requests (env: SERVICE_SECRET)",
 	)
 	rootCmd.Flags().StringVar(
-		&cfg.OpenAIKey,
+		&config.OpenAIKey,
 		"openai_api_key",
 		"",
 		"OpenAI API key (env: OPENAI_API_KEY)",
 	)
 	rootCmd.Flags().IntVar(
-		&cfg.Port,
+		&config.Port,
 		"port",
 		defaultPort,
 		"TCP port to listen on (env: GPT_PORT)",
 	)
 	rootCmd.Flags().StringVar(
-		&cfg.LogLevel,
+		&config.LogLevel,
 		"log_level",
 		"info",
 		"logging level: debug or info (env: LOG_LEVEL)",
 	)
 	rootCmd.Flags().StringVar(
-		&cfg.SystemPrompt,
+		&config.SystemPrompt,
 		"system_prompt",
 		"",
 		"system prompt sent to the model (env: SYSTEM_PROMPT)",

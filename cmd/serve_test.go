@@ -21,34 +21,33 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestValidateConfig(t *testing.T) {
-	tests := []struct {
-		cfg     Configuration
+	testCases := []struct {
+		config  Configuration
 		wantErr string
 	}{
 		{Configuration{ServiceSecret: "", OpenAIKey: ""}, "SERVICE_SECRET must be set"},
 		{Configuration{ServiceSecret: "secret", OpenAIKey: ""}, "OPENAI_API_KEY must be set"},
 	}
-	for _, tt := range tests {
-		err := validateConfig(tt.cfg)
+	for _, testCase := range testCases {
+		err := validateConfig(testCase.config)
 		if err == nil {
-			t.Errorf("validateConfig(%+v) = nil; want error containing %q", tt.cfg, tt.wantErr)
-		} else if !strings.Contains(err.Error(), tt.wantErr) {
-			t.Errorf("validateConfig(%+v) error = %q; want contains %q", tt.cfg, err.Error(), tt.wantErr)
+			t.Errorf("validateConfig(%+v) = nil; want error containing %q", testCase.config, testCase.wantErr)
+		} else if !strings.Contains(err.Error(), testCase.wantErr) {
+			t.Errorf("validateConfig(%+v) error = %q; want contains %q", testCase.config, err.Error(), testCase.wantErr)
 		}
 	}
 }
 
 func TestSecretMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	secret := "s3cr3t"
-	r := gin.New()
-	// pass a logger into the middleware
-	r.Use(secretMiddleware(secret, zap.NewExample().Sugar()))
-	r.GET("/", func(c *gin.Context) {
-		c.String(http.StatusOK, "OK")
+	sharedSecret := "s3cr3t"
+	router := gin.New()
+	router.Use(secretMiddleware(sharedSecret, zap.NewExample().Sugar()))
+	router.GET("/", func(context *gin.Context) {
+		context.String(http.StatusOK, "OK")
 	})
 
-	cases := []struct {
+	testCases := []struct {
 		key      string
 		wantCode int
 	}{
@@ -56,12 +55,12 @@ func TestSecretMiddleware(t *testing.T) {
 		{"wrong", http.StatusForbidden},
 		{"s3cr3t", http.StatusOK},
 	}
-	for _, cse := range cases {
-		w := httptest.NewRecorder()
-		req := httptest.NewRequest("GET", "/?key="+cse.key, nil)
-		r.ServeHTTP(w, req)
-		if w.Code != cse.wantCode {
-			t.Errorf("with key=%q code=%d; want %d", cse.key, w.Code, cse.wantCode)
+	for _, testCase := range testCases {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest("GET", "/?key="+testCase.key, nil)
+		router.ServeHTTP(recorder, request)
+		if recorder.Code != testCase.wantCode {
+			t.Errorf("with key=%q code=%d; want %d", testCase.key, recorder.Code, testCase.wantCode)
 		}
 	}
 }
@@ -71,23 +70,22 @@ func TestChatHandler_MissingPrompt(t *testing.T) {
 	router := gin.New()
 	router.GET("/", chatHandler("ignored", "", zap.NewExample().Sugar()))
 
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/", nil)
-	router.ServeHTTP(w, req)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest("GET", "/", nil)
+	router.ServeHTTP(recorder, request)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("missing prompt code = %d; want %d", w.Code, http.StatusBadRequest)
+	if recorder.Code != http.StatusBadRequest {
+		t.Errorf("missing prompt code = %d; want %d", recorder.Code, http.StatusBadRequest)
 	}
-	if body := w.Body.String(); body != "missing prompt parameter" {
+	if body := recorder.Body.String(); body != "missing prompt parameter" {
 		t.Errorf("missing prompt body = %q; want %q", body, "missing prompt parameter")
 	}
 }
 
 func TestChatHandler_Success(t *testing.T) {
-	// Stub out OpenAI call
 	original := http.DefaultClient
 	http.DefaultClient = &http.Client{
-		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 			const respBody = `{"choices":[{"message":{"content":"Hello, world!"}}]}`
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -103,23 +101,22 @@ func TestChatHandler_Success(t *testing.T) {
 	router := gin.New()
 	router.GET("/", chatHandler("ignored", "", zap.NewExample().Sugar()))
 
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/?prompt=anything", nil)
-	router.ServeHTTP(w, req)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest("GET", "/?prompt=anything", nil)
+	router.ServeHTTP(recorder, request)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("success code = %d; want %d", w.Code, http.StatusOK)
+	if recorder.Code != http.StatusOK {
+		t.Errorf("success code = %d; want %d", recorder.Code, http.StatusOK)
 	}
-	if body := w.Body.String(); body != "Hello, world!" {
+	if body := recorder.Body.String(); body != "Hello, world!" {
 		t.Errorf("success body = %q; want %q", body, "Hello, world!")
 	}
 }
 
 func TestChatHandler_APIError(t *testing.T) {
-	// Stub out OpenAI call to return an error status
 	original := http.DefaultClient
 	http.DefaultClient = &http.Client{
-		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 			const respBody = `{"error":{"message":"Bad request"}}`
 			return &http.Response{
 				StatusCode: http.StatusBadRequest,
@@ -135,15 +132,15 @@ func TestChatHandler_APIError(t *testing.T) {
 	router := gin.New()
 	router.GET("/", chatHandler("ignored", "", zap.NewExample().Sugar()))
 
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/?prompt=test", nil)
-	router.ServeHTTP(w, req)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest("GET", "/?prompt=test", nil)
+	router.ServeHTTP(recorder, request)
 
-	if w.Code != http.StatusBadGateway {
-		t.Errorf("API error code = %d; want %d", w.Code, http.StatusBadGateway)
+	if recorder.Code != http.StatusBadGateway {
+		t.Errorf("API error code = %d; want %d", recorder.Code, http.StatusBadGateway)
 	}
-	if !strings.Contains(w.Body.String(), "OpenAI API error") {
-		t.Errorf("API error body = %q; want to contain %q", w.Body.String(), "OpenAI API error")
+	if !strings.Contains(recorder.Body.String(), "OpenAI API error") {
+		t.Errorf("API error body = %q; want to contain %q", recorder.Body.String(), "OpenAI API error")
 	}
 }
 
@@ -151,8 +148,8 @@ func TestChatHandler_SystemPromptOverride(t *testing.T) {
 	original := http.DefaultClient
 	var got string
 	http.DefaultClient = &http.Client{
-		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-			body, _ := io.ReadAll(req.Body)
+		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			body, _ := io.ReadAll(request.Body)
 			var payload map[string]any
 			_ = json.Unmarshal(body, &payload)
 			if msgs, ok := payload["messages"].([]any); ok && len(msgs) > 0 {
@@ -176,9 +173,9 @@ func TestChatHandler_SystemPromptOverride(t *testing.T) {
 	router := gin.New()
 	router.GET("/", chatHandler("ignored", "default", zap.NewExample().Sugar()))
 
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/?prompt=test&system_prompt=override", nil)
-	router.ServeHTTP(w, req)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest("GET", "/?prompt=test&system_prompt=override", nil)
+	router.ServeHTTP(recorder, request)
 
 	if got != "override" {
 		t.Errorf("system prompt = %q; want %q", got, "override")

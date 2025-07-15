@@ -37,11 +37,11 @@ type proxyResponse struct {
 
 // requestResponseLogger logs request arrival and response metadata at INFO.
 func requestResponseLogger(logger *zap.SugaredLogger) gin.HandlerFunc {
-	return func(c *gin.Context) {
+	return func(context *gin.Context) {
 		start := time.Now()
-		method := c.Request.Method
-		path := c.Request.URL.RequestURI()
-		ip := c.ClientIP()
+		method := context.Request.Method
+		path := context.Request.URL.RequestURI()
+		ip := context.ClientIP()
 
 		logger.Infow("request received",
 			"method", method,
@@ -49,9 +49,9 @@ func requestResponseLogger(logger *zap.SugaredLogger) gin.HandlerFunc {
 			"client_ip", ip,
 		)
 
-		c.Next()
+		context.Next()
 
-		status := c.Writer.Status()
+		status := context.Writer.Status()
 		latency := time.Since(start).Milliseconds()
 		logger.Infow("response sent",
 			"status", status,
@@ -61,52 +61,51 @@ func requestResponseLogger(logger *zap.SugaredLogger) gin.HandlerFunc {
 }
 
 // serve sets up Gin with conditional logging and starts the server.
-func serve(cfg Configuration, logger *zap.SugaredLogger) error {
-	if err := validateConfig(cfg); err != nil {
+func serve(config Configuration, logger *zap.SugaredLogger) error {
+	if err := validateConfig(config); err != nil {
 		return err
 	}
 
-	if cfg.LogLevel == "debug" {
+	if config.LogLevel == "debug" {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	r := gin.New()
-	if cfg.LogLevel == "info" || cfg.LogLevel == "debug" {
-		r.Use(requestResponseLogger(logger))
+	router := gin.New()
+	if config.LogLevel == "info" || config.LogLevel == "debug" {
+		router.Use(requestResponseLogger(logger))
 	}
 
-	r.Use(gin.Recovery(), secretMiddleware(cfg.ServiceSecret, logger))
-	r.GET("/", chatHandler(cfg.OpenAIKey, cfg.SystemPrompt, logger))
-	return r.Run(fmt.Sprintf(":%d", cfg.Port))
+	router.Use(gin.Recovery(), secretMiddleware(config.ServiceSecret, logger))
+	router.GET("/", chatHandler(config.OpenAIKey, config.SystemPrompt, logger))
+	return router.Run(fmt.Sprintf(":%d", config.Port))
 }
 
-func validateConfig(cfg Configuration) error {
-	if cfg.ServiceSecret == "" {
+func validateConfig(config Configuration) error {
+	if config.ServiceSecret == "" {
 		return fmt.Errorf("SERVICE_SECRET must be set")
 	}
-	if cfg.OpenAIKey == "" {
+	if config.OpenAIKey == "" {
 		return fmt.Errorf("OPENAI_API_KEY must be set")
 	}
-	req, err := http.NewRequest(http.MethodGet, openAIModelsURL, nil)
+	request, err := http.NewRequest(http.MethodGet, openAIModelsURL, nil)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+cfg.OpenAIKey)
+	request.Header.Set("Authorization", "Bearer "+config.OpenAIKey)
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	start := time.Now()
-	resp, err := client.Do(req)
+	response, err := client.Do(request)
 	latency := time.Since(start).Milliseconds()
 	if err == nil {
-		defer resp.Body.Close()
+		defer response.Body.Close()
 	}
-	// log validation call
 	logger := zap.NewExample().Sugar()
 	status := 0
-	if resp != nil {
-		status = resp.StatusCode
+	if response != nil {
+		status = response.StatusCode
 	}
 	logger.Infow("OpenAI key validation",
 		"status", status,
@@ -115,81 +114,80 @@ func validateConfig(cfg Configuration) error {
 	if err != nil {
 		return fmt.Errorf("failed to validate OPENAI_API_KEY: %w", err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("OPENAI_API_KEY validation failed (status %d)", resp.StatusCode)
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("OPENAI_API_KEY validation failed (status %d)", response.StatusCode)
 	}
 	return nil
 }
 
 func secretMiddleware(secret string, logger *zap.SugaredLogger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if c.Query("key") != secret {
-			logger.Warnw("forbidden request", "presented_key", c.Query("key"))
-			c.AbortWithStatus(http.StatusForbidden)
+	return func(context *gin.Context) {
+		if context.Query("key") != secret {
+			logger.Warnw("forbidden request", "presented_key", context.Query("key"))
+			context.AbortWithStatus(http.StatusForbidden)
 			return
 		}
-		c.Next()
+		context.Next()
 	}
 }
 
 func chatHandler(openAIKey string, systemPrompt string, logger *zap.SugaredLogger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		prompt := c.Query("prompt")
+	return func(context *gin.Context) {
+		prompt := context.Query("prompt")
 		if prompt == "" {
-			c.String(http.StatusBadRequest, "missing prompt parameter")
+			context.String(http.StatusBadRequest, "missing prompt parameter")
 			return
 		}
 
-		sp := c.Query("system_prompt")
-		if sp == "" {
-			sp = systemPrompt
+		systemPromptOverride := context.Query("system_prompt")
+		if systemPromptOverride == "" {
+			systemPromptOverride = systemPrompt
 		}
 
 		payload := map[string]any{
 			"model": "gpt-4.1",
 			"messages": []map[string]string{
-				{"role": "system", "content": sp},
+				{"role": "system", "content": systemPromptOverride},
 				{"role": "user", "content": prompt},
 			},
 			"temperature": 0.7,
 			"max_tokens":  1024,
 		}
 		bodyBytes, _ := json.Marshal(payload)
-		req, _ := http.NewRequest(http.MethodPost, openAIURL, bytes.NewReader(bodyBytes))
-		req.Header.Set("Authorization", "Bearer "+openAIKey)
-		req.Header.Set("Content-Type", "application/json")
+		request, _ := http.NewRequest(http.MethodPost, openAIURL, bytes.NewReader(bodyBytes))
+		request.Header.Set("Authorization", "Bearer "+openAIKey)
+		request.Header.Set("Content-Type", "application/json")
 
 		start := time.Now()
-		resp, err := http.DefaultClient.Do(req)
+		response, err := http.DefaultClient.Do(request)
 		latency := time.Since(start).Milliseconds()
 		if err != nil {
 			logger.Errorw("OpenAI request error", "err", err, "latency_ms", latency)
-			c.String(http.StatusBadGateway, "OpenAI request error")
+			context.String(http.StatusBadGateway, "OpenAI request error")
 			return
 		}
-		defer resp.Body.Close()
-
-		respBytes, _ := io.ReadAll(resp.Body)
+		defer response.Body.Close()
+		responseBytes, _ := io.ReadAll(response.Body)
 		content := ""
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			var pr proxyResponse
-			if jerr := json.Unmarshal(respBytes, &pr); jerr == nil && len(pr.Choices) > 0 {
-				content = pr.Choices[0].Message.Content
+		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			var proxyResp proxyResponse
+			if jsonErr := json.Unmarshal(responseBytes, &proxyResp); jsonErr == nil && len(proxyResp.Choices) > 0 {
+				content = proxyResp.Choices[0].Message.Content
 			}
 		}
 
 		logger.Infow("OpenAI API response",
-			"status", resp.StatusCode,
+			"status", response.StatusCode,
 			"latency_ms", latency,
 			"response_text", content,
 		)
 
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			logger.Errorw("OpenAI API error", "status", resp.StatusCode, "body", string(respBytes))
-			c.String(http.StatusBadGateway, "OpenAI API error")
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			logger.Errorw("OpenAI API error", "status", response.StatusCode, "body", string(responseBytes))
+			context.String(http.StatusBadGateway, "OpenAI API error")
 			return
 		}
 
-		c.String(http.StatusOK, content)
+		context.String(http.StatusOK, content)
 	}
 }
