@@ -24,6 +24,7 @@ type Configuration struct {
 	OpenAIKey     string
 	Port          int
 	LogLevel      string // "debug", "info", or "none"
+	SystemPrompt  string
 }
 
 type proxyResponse struct {
@@ -77,7 +78,7 @@ func serve(cfg Configuration, logger *zap.SugaredLogger) error {
 	}
 
 	r.Use(gin.Recovery(), secretMiddleware(cfg.ServiceSecret, logger))
-	r.GET("/", chatHandler(cfg.OpenAIKey, logger))
+	r.GET("/", chatHandler(cfg.OpenAIKey, cfg.SystemPrompt, logger))
 	return r.Run(fmt.Sprintf(":%d", cfg.Port))
 }
 
@@ -131,7 +132,7 @@ func secretMiddleware(secret string, logger *zap.SugaredLogger) gin.HandlerFunc 
 	}
 }
 
-func chatHandler(openAIKey string, logger *zap.SugaredLogger) gin.HandlerFunc {
+func chatHandler(openAIKey string, systemPrompt string, logger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		prompt := c.Query("prompt")
 		if prompt == "" {
@@ -139,10 +140,15 @@ func chatHandler(openAIKey string, logger *zap.SugaredLogger) gin.HandlerFunc {
 			return
 		}
 
+		sp := c.Query("system_prompt")
+		if sp == "" {
+			sp = systemPrompt
+		}
+
 		payload := map[string]any{
 			"model": "gpt-4.1",
 			"messages": []map[string]string{
-				{"role": "system", "content": "You are a helpful assistant."},
+				{"role": "system", "content": sp},
 				{"role": "user", "content": prompt},
 			},
 			"temperature": 0.7,

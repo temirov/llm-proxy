@@ -40,6 +40,9 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 		if cfg.LogLevel == "" {
 			cfg.LogLevel = viper.GetString("log_level")
 		}
+		if cfg.SystemPrompt == "" {
+			cfg.SystemPrompt = viper.GetString("system_prompt")
+		}
 
 		// choose zap config based on log level
 		var logger *zap.Logger
@@ -65,6 +68,7 @@ func init() {
 	viper.BindEnv("openai_api_key", "OPENAI_API_KEY")
 	viper.BindEnv("service_secret", "SERVICE_SECRET")
 	viper.BindEnv("log_level", "LOG_LEVEL")
+	viper.BindEnv("system_prompt", "SYSTEM_PROMPT")
 
 	rootCmd.Flags().StringVar(
 		&cfg.ServiceSecret,
@@ -89,6 +93,12 @@ func init() {
 		"log_level",
 		"info",
 		"logging level: debug or info (env: LOG_LEVEL)",
+	)
+	rootCmd.Flags().StringVar(
+		&cfg.SystemPrompt,
+		"system_prompt",
+		"",
+		"system prompt sent to the model (env: SYSTEM_PROMPT)",
 	)
 
 	viper.BindPFlags(rootCmd.Flags())
