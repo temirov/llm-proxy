@@ -111,6 +111,8 @@ func serve(config Configuration, logger *zap.SugaredLogger) error {
 	return router.Run(fmt.Sprintf(":%d", config.Port))
 }
 
+// validateConfig ensures all required Configuration fields are present and
+// validates the OpenAI API key by hitting the models endpoint.
 func validateConfig(config Configuration) error {
 	if config.ServiceSecret == "" {
 		return fmt.Errorf("SERVICE_SECRET must be set")
@@ -149,6 +151,8 @@ func validateConfig(config Configuration) error {
 	return nil
 }
 
+// secretMiddleware rejects requests that do not provide the correct
+// `key` query parameter.
 func secretMiddleware(secret string, logger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(context *gin.Context) {
 		if context.Query("key") != secret {
@@ -160,6 +164,8 @@ func secretMiddleware(secret string, logger *zap.SugaredLogger) gin.HandlerFunc 
 	}
 }
 
+// openAIRequest sends the prompt and system prompt to the OpenAI chat API
+// and returns the resulting text.
 func openAIRequest(openAIKey, prompt, systemPrompt string, logger *zap.SugaredLogger) (string, error) {
 	payload := map[string]any{
 		"model": "gpt-4.1",
@@ -206,6 +212,8 @@ func openAIRequest(openAIKey, prompt, systemPrompt string, logger *zap.SugaredLo
 	return content, nil
 }
 
+// preferredMime returns the client's requested MIME type via the "format"
+// query parameter or the Accept header.
 func preferredMime(ctx *gin.Context) string {
 	if formatParam := ctx.Query("format"); formatParam != "" {
 		return formatParam
@@ -213,6 +221,8 @@ func preferredMime(ctx *gin.Context) string {
 	return ctx.GetHeader("Accept")
 }
 
+// formatResponse converts the model output to the requested MIME type and
+// returns the formatted body along with its Content-Type.
 func formatResponse(text, mime, prompt string) (string, string) {
 	switch {
 	case strings.Contains(mime, "application/json"):
@@ -235,6 +245,8 @@ func formatResponse(text, mime, prompt string) (string, string) {
 	}
 }
 
+// chatHandler processes chat requests by dispatching them to the worker queue
+// and returning the formatted response or an error to the client.
 func chatHandler(taskQueue chan requestTask, systemPrompt string, logger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(context *gin.Context) {
 		prompt := context.Query("prompt")
