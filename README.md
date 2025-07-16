@@ -48,7 +48,17 @@ curl --get \
   "http://localhost:8080/"
 ```
 
-The response body contains the model's reply as plain text.
+The response body contains the model's reply as plain text by default.
+
+You can request alternative formats using either the `format` query parameter or
+the `Accept` header. Supported values are:
+
+- `text/csv` – the reply as a single CSV cell with internal quotes doubled
+  and a trailing newline
+- `application/json` – JSON object containing `request` and `response` fields
+- `application/xml` – XML document `<response request="...">...</response>`
+
+If no supported value is provided, `text/plain` is returned.
 
 ## License
 
