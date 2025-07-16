@@ -3,9 +3,11 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -204,6 +206,35 @@ func openAIRequest(openAIKey, prompt, systemPrompt string, logger *zap.SugaredLo
 	return content, nil
 }
 
+func preferredMime(c *gin.Context) string {
+	if q := c.Query("format"); q != "" {
+		return q
+	}
+	return c.GetHeader("Accept")
+}
+
+func formatResponse(text, mime, prompt string) (string, string) {
+	switch {
+	case strings.Contains(mime, "application/json"):
+		b, _ := json.Marshal(map[string]string{"request": prompt, "response": text})
+		return string(b), "application/json"
+	case strings.Contains(mime, "application/xml"), strings.Contains(mime, "text/xml"):
+		type xmlResp struct {
+			XMLName xml.Name `xml:"response"`
+			Request string   `xml:"request,attr"`
+			Text    string   `xml:",chardata"`
+		}
+		r := xmlResp{Request: prompt, Text: text}
+		b, _ := xml.Marshal(r)
+		return string(b), "application/xml"
+	case strings.Contains(mime, "text/csv"):
+		escaped := strings.ReplaceAll(text, "\"", "\"\"")
+		return fmt.Sprintf("\"%s\"\n", escaped), "text/csv"
+	default:
+		return text, "text/plain; charset=utf-8"
+	}
+}
+
 func chatHandler(taskQueue chan requestTask, systemPrompt string, logger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(context *gin.Context) {
 		prompt := context.Query("prompt")
@@ -225,7 +256,9 @@ func chatHandler(taskQueue chan requestTask, systemPrompt string, logger *zap.Su
 			if res.err != nil {
 				context.String(http.StatusBadGateway, res.err.Error())
 			} else {
-				context.String(http.StatusOK, res.text)
+				mime := preferredMime(context)
+				formatted, contentType := formatResponse(res.text, mime, prompt)
+				context.Data(http.StatusOK, contentType, []byte(formatted))
 			}
 		case <-time.After(requestTimeout):
 			context.String(http.StatusGatewayTimeout, "request timed out")
