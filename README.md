@@ -23,6 +23,8 @@ variables:
 | `--port` / `GPT_PORT`                 | Port for the HTTP server (default `8080`)           |
 | `--log_level` / `LOG_LEVEL`           | `debug` or `info` (default `info`)                  |
 | `--system_prompt` / `SYSTEM_PROMPT`   | Optional system prompt text                         |
+| `--workers` / `GPT_WORKERS`           | Number of worker goroutines (default `4`) |
+| `--queue_size` / `GPT_QUEUE_SIZE`     | Request queue size (default `100`)        |
 
 ## Running
 
