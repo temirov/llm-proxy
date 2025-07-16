@@ -355,3 +355,29 @@ func TestChatHandler_Timeout(t *testing.T) {
 		t.Errorf("timeout body = %q; want %q", body, "request timed out")
 	}
 }
+
+func TestPreferredMime_Normalization(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+
+	// Query parameter takes precedence and should be normalized.
+	req := httptest.NewRequest("GET", "/", nil)
+	q := req.URL.Query()
+	q.Set("format", " Application/JSON ")
+	req.URL.RawQuery = q.Encode()
+	ctx.Request = req
+	if got := preferredMime(ctx); got != "application/json" {
+		t.Errorf("preferredMime query = %q; want %q", got, "application/json")
+	}
+
+	// Header value should also be normalized.
+	recorder2 := httptest.NewRecorder()
+	ctx2, _ := gin.CreateTestContext(recorder2)
+	req = httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Accept", "  TeXt/CsV  ")
+	ctx2.Request = req
+	if got := preferredMime(ctx2); got != "text/csv" {
+		t.Errorf("preferredMime header = %q; want %q", got, "text/csv")
+	}
+}

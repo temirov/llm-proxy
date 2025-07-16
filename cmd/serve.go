@@ -216,9 +216,10 @@ func openAIRequest(openAIKey, prompt, systemPrompt string, logger *zap.SugaredLo
 // query parameter or the Accept header.
 func preferredMime(ctx *gin.Context) string {
 	if formatParam := ctx.Query("format"); formatParam != "" {
-		return formatParam
+		return strings.ToLower(strings.TrimSpace(formatParam))
 	}
-	return ctx.GetHeader("Accept")
+	return strings.ToLower(strings.TrimSpace(ctx.GetHeader("Accept")))
+
 }
 
 // formatResponse converts the model output to the requested MIME type and
