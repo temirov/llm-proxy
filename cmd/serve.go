@@ -218,7 +218,7 @@ func preferredMime(ctx *gin.Context) string {
 	if formatParam := ctx.Query("format"); formatParam != "" {
 		return strings.ToLower(strings.TrimSpace(formatParam))
 	}
-	return strings.ToLower(strings.TrimSpace(c.GetHeader("Accept")))
+	return strings.ToLower(strings.TrimSpace(ctx.GetHeader("Accept")))
 
 }
 
