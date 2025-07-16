@@ -208,9 +208,9 @@ func openAIRequest(openAIKey, prompt, systemPrompt string, logger *zap.SugaredLo
 
 func preferredMime(c *gin.Context) string {
 	if q := c.Query("format"); q != "" {
-		return q
+		return strings.ToLower(strings.TrimSpace(q))
 	}
-	return c.GetHeader("Accept")
+	return strings.ToLower(strings.TrimSpace(c.GetHeader("Accept")))
 }
 
 func formatResponse(text, mime, prompt string) (string, string) {
