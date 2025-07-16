@@ -97,7 +97,7 @@ func serve(config Configuration, logger *zap.SugaredLogger) error {
 	}
 
 	taskQueue := make(chan requestTask, config.QueueSize)
-	for i := 0; i < config.WorkerCount; i++ {
+	for workerIndex := 0; workerIndex < config.WorkerCount; workerIndex++ {
 		go func() {
 			for task := range taskQueue {
 				text, err := openAIRequest(config.OpenAIKey, task.prompt, task.systemPrompt, logger)
@@ -214,11 +214,11 @@ func openAIRequest(openAIKey, prompt, systemPrompt string, logger *zap.SugaredLo
 
 // preferredMime returns the client's requested MIME type via the "format"
 // query parameter or the Accept header.
-func preferredMime(c *gin.Context) string {
-	if q := c.Query("format"); q != "" {
-		return q
+func preferredMime(ctx *gin.Context) string {
+	if formatParam := ctx.Query("format"); formatParam != "" {
+		return formatParam
 	}
-	return c.GetHeader("Accept")
+	return ctx.GetHeader("Accept")
 }
 
 // formatResponse converts the model output to the requested MIME type and
@@ -226,17 +226,17 @@ func preferredMime(c *gin.Context) string {
 func formatResponse(text, mime, prompt string) (string, string) {
 	switch {
 	case strings.Contains(mime, "application/json"):
-		b, _ := json.Marshal(map[string]string{"request": prompt, "response": text})
-		return string(b), "application/json"
+		encoded, _ := json.Marshal(map[string]string{"request": prompt, "response": text})
+		return string(encoded), "application/json"
 	case strings.Contains(mime, "application/xml"), strings.Contains(mime, "text/xml"):
-		type xmlResp struct {
+		type xmlResponse struct {
 			XMLName xml.Name `xml:"response"`
 			Request string   `xml:"request,attr"`
 			Text    string   `xml:",chardata"`
 		}
-		r := xmlResp{Request: prompt, Text: text}
-		b, _ := xml.Marshal(r)
-		return string(b), "application/xml"
+		xmlResp := xmlResponse{Request: prompt, Text: text}
+		encoded, _ := xml.Marshal(xmlResp)
+		return string(encoded), "application/xml"
 	case strings.Contains(mime, "text/csv"):
 		escaped := strings.ReplaceAll(text, "\"", "\"\"")
 		return fmt.Sprintf("\"%s\"\n", escaped), "text/csv"
