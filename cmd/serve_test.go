@@ -297,9 +297,9 @@ func TestChatHandler_SystemPromptOverride(t *testing.T) {
 			var payload map[string]any
 			_ = json.Unmarshal(body, &payload)
 			if msgs, ok := payload["messages"].([]any); ok && len(msgs) > 0 {
-				if m, ok := msgs[0].(map[string]any); ok {
-					if c, ok := m["content"].(string); ok {
-						got = c
+				if messageMap, ok := msgs[0].(map[string]any); ok {
+					if content, ok := messageMap["content"].(string); ok {
+						got = content
 					}
 				}
 			}

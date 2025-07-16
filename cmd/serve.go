@@ -97,7 +97,7 @@ func serve(config Configuration, logger *zap.SugaredLogger) error {
 	}
 
 	taskQueue := make(chan requestTask, config.QueueSize)
-	for i := 0; i < config.WorkerCount; i++ {
+	for workerIndex := 0; workerIndex < config.WorkerCount; workerIndex++ {
 		go func() {
 			for task := range taskQueue {
 				text, err := openAIRequest(config.OpenAIKey, task.prompt, task.systemPrompt, logger)
@@ -111,6 +111,8 @@ func serve(config Configuration, logger *zap.SugaredLogger) error {
 	return router.Run(fmt.Sprintf(":%d", config.Port))
 }
 
+// validateConfig ensures all required Configuration fields are present and
+// validates the OpenAI API key by hitting the models endpoint.
 func validateConfig(config Configuration) error {
 	if config.ServiceSecret == "" {
 		return fmt.Errorf("SERVICE_SECRET must be set")
@@ -149,6 +151,8 @@ func validateConfig(config Configuration) error {
 	return nil
 }
 
+// secretMiddleware rejects requests that do not provide the correct
+// `key` query parameter.
 func secretMiddleware(secret string, logger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(context *gin.Context) {
 		if context.Query("key") != secret {
@@ -160,6 +164,8 @@ func secretMiddleware(secret string, logger *zap.SugaredLogger) gin.HandlerFunc 
 	}
 }
 
+// openAIRequest sends the prompt and system prompt to the OpenAI chat API
+// and returns the resulting text.
 func openAIRequest(openAIKey, prompt, systemPrompt string, logger *zap.SugaredLogger) (string, error) {
 	payload := map[string]any{
 		"model": "gpt-4.1",
@@ -206,27 +212,32 @@ func openAIRequest(openAIKey, prompt, systemPrompt string, logger *zap.SugaredLo
 	return content, nil
 }
 
-func preferredMime(c *gin.Context) string {
-	if q := c.Query("format"); q != "" {
-		return strings.ToLower(strings.TrimSpace(q))
+// preferredMime returns the client's requested MIME type via the "format"
+// query parameter or the Accept header.
+func preferredMime(ctx *gin.Context) string {
+	if formatParam := ctx.Query("format"); formatParam != "" {
+		return strings.ToLower(strings.TrimSpace(formatParam))
 	}
 	return strings.ToLower(strings.TrimSpace(c.GetHeader("Accept")))
+
 }
 
+// formatResponse converts the model output to the requested MIME type and
+// returns the formatted body along with its Content-Type.
 func formatResponse(text, mime, prompt string) (string, string) {
 	switch {
 	case strings.Contains(mime, "application/json"):
-		b, _ := json.Marshal(map[string]string{"request": prompt, "response": text})
-		return string(b), "application/json"
+		encoded, _ := json.Marshal(map[string]string{"request": prompt, "response": text})
+		return string(encoded), "application/json"
 	case strings.Contains(mime, "application/xml"), strings.Contains(mime, "text/xml"):
-		type xmlResp struct {
+		type xmlResponse struct {
 			XMLName xml.Name `xml:"response"`
 			Request string   `xml:"request,attr"`
 			Text    string   `xml:",chardata"`
 		}
-		r := xmlResp{Request: prompt, Text: text}
-		b, _ := xml.Marshal(r)
-		return string(b), "application/xml"
+		xmlResp := xmlResponse{Request: prompt, Text: text}
+		encoded, _ := xml.Marshal(xmlResp)
+		return string(encoded), "application/xml"
 	case strings.Contains(mime, "text/csv"):
 		escaped := strings.ReplaceAll(text, "\"", "\"\"")
 		return fmt.Sprintf("\"%s\"\n", escaped), "text/csv"
@@ -235,6 +246,8 @@ func formatResponse(text, mime, prompt string) (string, string) {
 	}
 }
 
+// chatHandler processes chat requests by dispatching them to the worker queue
+// and returning the formatted response or an error to the client.
 func chatHandler(taskQueue chan requestTask, systemPrompt string, logger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(context *gin.Context) {
 		prompt := context.Query("prompt")
