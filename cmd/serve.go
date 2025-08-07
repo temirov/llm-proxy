@@ -20,6 +20,7 @@ const (
 	defaultPort      = 8080
 	defaultWorkers   = 4
 	defaultQueueSize = 100
+	defaultModel     = "gpt-4.1"
 )
 
 var requestTimeout = 30 * time.Second
@@ -49,9 +50,11 @@ type result struct {
 }
 
 type requestTask struct {
-	prompt       string
-	systemPrompt string
-	reply        chan result
+	prompt        string
+	systemPrompt  string
+	model         string
+	validateModel bool
+	reply         chan result
 }
 
 // requestResponseLogger logs request arrival and response metadata at INFO.
@@ -100,7 +103,7 @@ func serve(config Configuration, logger *zap.SugaredLogger) error {
 	for workerIndex := 0; workerIndex < config.WorkerCount; workerIndex++ {
 		go func() {
 			for task := range taskQueue {
-				text, err := openAIRequest(config.OpenAIKey, task.prompt, task.systemPrompt, logger)
+				text, err := openAIRequest(config.OpenAIKey, task.model, task.prompt, task.systemPrompt, task.validateModel, logger)
 				task.reply <- result{text: text, err: err}
 			}
 		}()
@@ -166,9 +169,27 @@ func secretMiddleware(secret string, logger *zap.SugaredLogger) gin.HandlerFunc 
 
 // openAIRequest sends the prompt and system prompt to the OpenAI chat API
 // and returns the resulting text.
-func openAIRequest(openAIKey, prompt, systemPrompt string, logger *zap.SugaredLogger) (string, error) {
+func openAIRequest(openAIKey, model, prompt, systemPrompt string, validateModel bool, logger *zap.SugaredLogger) (string, error) {
+	if validateModel {
+		request, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/%s", openAIModelsURL, model), nil)
+		request.Header.Set("Authorization", "Bearer "+openAIKey)
+
+		start := time.Now()
+		response, err := http.DefaultClient.Do(request)
+		latency := time.Since(start).Milliseconds()
+		if err != nil {
+			logger.Errorw("OpenAI model validation error", "err", err, "latency_ms", latency)
+			return "", fmt.Errorf("OpenAI model validation error")
+		}
+		defer response.Body.Close()
+		logger.Infow("OpenAI model validation", "model", model, "status", response.StatusCode, "latency_ms", latency)
+		if response.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("unknown model: %s", model)
+		}
+	}
+
 	payload := map[string]any{
-		"model": "gpt-4.1",
+		"model": model,
 		"messages": []map[string]string{
 			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": prompt},
@@ -261,13 +282,25 @@ func chatHandler(taskQueue chan requestTask, systemPrompt string, logger *zap.Su
 			systemPromptOverride = systemPrompt
 		}
 
+		model := context.Query("model")
+		validateModel := false
+		if model == "" {
+			model = defaultModel
+		} else {
+			validateModel = true
+		}
+
 		reply := make(chan result, 1)
-		taskQueue <- requestTask{prompt: prompt, systemPrompt: systemPromptOverride, reply: reply}
+		taskQueue <- requestTask{prompt: prompt, systemPrompt: systemPromptOverride, model: model, validateModel: validateModel, reply: reply}
 
 		select {
 		case res := <-reply:
 			if res.err != nil {
-				context.String(http.StatusBadGateway, res.err.Error())
+				if strings.Contains(res.err.Error(), "unknown model") {
+					context.String(http.StatusBadRequest, res.err.Error())
+				} else {
+					context.String(http.StatusBadGateway, res.err.Error())
+				}
 			} else {
 				mime := preferredMime(context)
 				formatted, contentType := formatResponse(res.text, mime, prompt)
