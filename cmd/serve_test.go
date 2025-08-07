@@ -20,6 +20,14 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
+func testValidator(models ...string) *modelValidator {
+	m := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		m[model] = struct{}{}
+	}
+	return &modelValidator{models: m, expiry: time.Now().Add(time.Hour)}
+}
+
 func TestValidateConfig(t *testing.T) {
 	testCases := []struct {
 		config  Configuration
@@ -70,7 +78,8 @@ func TestChatHandler_MissingPrompt(t *testing.T) {
 	router := gin.New()
 	taskQueue := make(chan requestTask, 1)
 	defer close(taskQueue)
-	router.GET("/", chatHandler(taskQueue, "", zap.NewExample().Sugar()))
+	validator := testValidator(defaultModel)
+	router.GET("/", chatHandler(taskQueue, "", validator, zap.NewExample().Sugar()))
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/", nil)
@@ -103,12 +112,13 @@ func TestChatHandler_Success(t *testing.T) {
 	taskQueue := make(chan requestTask, 1)
 	go func() {
 		for task := range taskQueue {
-			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
+			text, err := openAIRequest("ignored", task.model, task.prompt, task.systemPrompt, zap.NewExample().Sugar())
 			task.reply <- result{text: text, err: err}
 		}
 	}()
 	router := gin.New()
-	router.GET("/", chatHandler(taskQueue, "", zap.NewExample().Sugar()))
+	validator := testValidator(defaultModel)
+	router.GET("/", chatHandler(taskQueue, "", validator, zap.NewExample().Sugar()))
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/?prompt=anything", nil)
@@ -141,12 +151,13 @@ func TestChatHandler_CSVFormat(t *testing.T) {
 	taskQueue := make(chan requestTask, 1)
 	go func() {
 		for task := range taskQueue {
-			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
+			text, err := openAIRequest("ignored", task.model, task.prompt, task.systemPrompt, zap.NewExample().Sugar())
 			task.reply <- result{text: text, err: err}
 		}
 	}()
 	router := gin.New()
-	router.GET("/", chatHandler(taskQueue, "", zap.NewExample().Sugar()))
+	validator := testValidator(defaultModel)
+	router.GET("/", chatHandler(taskQueue, "", validator, zap.NewExample().Sugar()))
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/?prompt=anything", nil)
@@ -183,12 +194,13 @@ func TestChatHandler_FormatParam(t *testing.T) {
 	taskQueue := make(chan requestTask, 1)
 	go func() {
 		for task := range taskQueue {
-			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
+			text, err := openAIRequest("ignored", task.model, task.prompt, task.systemPrompt, zap.NewExample().Sugar())
 			task.reply <- result{text: text, err: err}
 		}
 	}()
 	router := gin.New()
-	router.GET("/", chatHandler(taskQueue, "", zap.NewExample().Sugar()))
+	validator := testValidator(defaultModel)
+	router.GET("/", chatHandler(taskQueue, "", validator, zap.NewExample().Sugar()))
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/?prompt=anything&format=application/json", nil)
@@ -225,12 +237,13 @@ func TestChatHandler_XMLHeader(t *testing.T) {
 	taskQueue := make(chan requestTask, 1)
 	go func() {
 		for task := range taskQueue {
-			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
+			text, err := openAIRequest("ignored", task.model, task.prompt, task.systemPrompt, zap.NewExample().Sugar())
 			task.reply <- result{text: text, err: err}
 		}
 	}()
 	router := gin.New()
-	router.GET("/", chatHandler(taskQueue, "", zap.NewExample().Sugar()))
+	validator := testValidator(defaultModel)
+	router.GET("/", chatHandler(taskQueue, "", validator, zap.NewExample().Sugar()))
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/?prompt=q", nil)
@@ -269,12 +282,13 @@ func TestChatHandler_APIError(t *testing.T) {
 	defer close(taskQueue)
 	go func() {
 		for task := range taskQueue {
-			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
+			text, err := openAIRequest("ignored", task.model, task.prompt, task.systemPrompt, zap.NewExample().Sugar())
 			task.reply <- result{text: text, err: err}
 		}
 	}()
 	router := gin.New()
-	router.GET("/", chatHandler(taskQueue, "", zap.NewExample().Sugar()))
+	validator := testValidator(defaultModel)
+	router.GET("/", chatHandler(taskQueue, "", validator, zap.NewExample().Sugar()))
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/?prompt=test", nil)
@@ -318,12 +332,13 @@ func TestChatHandler_SystemPromptOverride(t *testing.T) {
 	defer close(taskQueue)
 	go func() {
 		for task := range taskQueue {
-			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
+			text, err := openAIRequest("ignored", task.model, task.prompt, task.systemPrompt, zap.NewExample().Sugar())
 			task.reply <- result{text: text, err: err}
 		}
 	}()
 	router := gin.New()
-	router.GET("/", chatHandler(taskQueue, "default", zap.NewExample().Sugar()))
+	validator := testValidator(defaultModel)
+	router.GET("/", chatHandler(taskQueue, "default", validator, zap.NewExample().Sugar()))
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/?prompt=test&system_prompt=override", nil)
@@ -334,11 +349,74 @@ func TestChatHandler_SystemPromptOverride(t *testing.T) {
 	}
 }
 
+func TestChatHandler_ModelParam(t *testing.T) {
+	original := http.DefaultClient
+	var gotModel string
+	http.DefaultClient = &http.Client{
+		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			body, _ := io.ReadAll(request.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			if m, ok := payload["model"].(string); ok {
+				gotModel = m
+			}
+			const respBody = `{"choices":[{"message":{"content":"ok"}}]}`
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(respBody)), Header: make(http.Header)}, nil
+		}),
+		Timeout: 5 * time.Second,
+	}
+	defer func() { http.DefaultClient = original }()
+
+	gin.SetMode(gin.TestMode)
+	taskQueue := make(chan requestTask, 1)
+	defer close(taskQueue)
+	go func() {
+		for task := range taskQueue {
+			text, err := openAIRequest("ignored", task.model, task.prompt, task.systemPrompt, zap.NewExample().Sugar())
+			task.reply <- result{text: text, err: err}
+		}
+	}()
+	router := gin.New()
+	validator := testValidator("custom")
+	router.GET("/", chatHandler(taskQueue, "", validator, zap.NewExample().Sugar()))
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest("GET", "/?prompt=test&model=custom", nil)
+	router.ServeHTTP(recorder, request)
+
+	if gotModel != "custom" {
+		t.Errorf("model sent = %q; want %q", gotModel, "custom")
+	}
+	if recorder.Code != http.StatusOK {
+		t.Errorf("model param code = %d; want %d", recorder.Code, http.StatusOK)
+	}
+}
+
+func TestChatHandler_UnknownModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	taskQueue := make(chan requestTask, 1)
+	router := gin.New()
+	validator := testValidator("known")
+	router.GET("/", chatHandler(taskQueue, "", validator, zap.NewExample().Sugar()))
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest("GET", "/?prompt=hi&model=bad", nil)
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Errorf("unknown model code = %d; want %d", recorder.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(recorder.Body.String(), "unknown model") {
+		t.Errorf("unknown model body = %q; want to contain %q", recorder.Body.String(), "unknown model")
+	}
+}
+
 func TestChatHandler_Timeout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	taskQueue := make(chan requestTask, 1)
 	router := gin.New()
-	router.GET("/", chatHandler(taskQueue, "", zap.NewExample().Sugar()))
+	validator := testValidator(defaultModel)
+	router.GET("/", chatHandler(taskQueue, "", validator, zap.NewExample().Sugar()))
 
 	originalTimeout := requestTimeout
 	requestTimeout = 50 * time.Millisecond
