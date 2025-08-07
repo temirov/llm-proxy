@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,9 +21,17 @@ const (
 	defaultPort      = 8080
 	defaultWorkers   = 4
 	defaultQueueSize = 100
+	defaultModel     = "gpt-4.1"
 )
 
 var requestTimeout = 30 * time.Second
+
+var (
+	modelsMu       sync.RWMutex
+	cachedModels   map[string]struct{}
+	modelsExpiry   time.Time
+	modelsCacheTTL = 24 * time.Hour
+)
 
 // Configuration aggregates runtime settings.
 type Configuration struct {
@@ -49,9 +58,65 @@ type result struct {
 }
 
 type requestTask struct {
-	prompt       string
-	systemPrompt string
-	reply        chan result
+	prompt        string
+	systemPrompt  string
+	model         string
+	validateModel bool
+	reply         chan result
+}
+
+func refreshModels(openAIKey string, logger *zap.SugaredLogger) error {
+	request, _ := http.NewRequest(http.MethodGet, openAIModelsURL, nil)
+	request.Header.Set("Authorization", "Bearer "+openAIKey)
+
+	start := time.Now()
+	response, err := http.DefaultClient.Do(request)
+	latency := time.Since(start).Milliseconds()
+	if err != nil {
+		logger.Errorw("OpenAI models list error", "err", err, "latency_ms", latency)
+		return err
+	}
+	defer response.Body.Close()
+	logger.Infow("OpenAI models list", "status", response.StatusCode, "latency_ms", latency)
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("OpenAI models list error")
+	}
+	var payload struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return err
+	}
+	models := make(map[string]struct{}, len(payload.Data))
+	for _, m := range payload.Data {
+		models[m.ID] = struct{}{}
+	}
+	modelsMu.Lock()
+	cachedModels = models
+	modelsExpiry = time.Now().Add(modelsCacheTTL)
+	modelsMu.Unlock()
+	return nil
+}
+
+func ensureModel(openAIKey, model string, logger *zap.SugaredLogger) error {
+	modelsMu.RLock()
+	expiry := modelsExpiry
+	_, ok := cachedModels[model]
+	modelsMu.RUnlock()
+	if time.Now().After(expiry) || cachedModels == nil {
+		if err := refreshModels(openAIKey, logger); err != nil {
+			return fmt.Errorf("OpenAI model validation error")
+		}
+		modelsMu.RLock()
+		_, ok = cachedModels[model]
+		modelsMu.RUnlock()
+	}
+	if !ok {
+		return fmt.Errorf("unknown model: %s", model)
+	}
+	return nil
 }
 
 // requestResponseLogger logs request arrival and response metadata at INFO.
@@ -100,7 +165,7 @@ func serve(config Configuration, logger *zap.SugaredLogger) error {
 	for workerIndex := 0; workerIndex < config.WorkerCount; workerIndex++ {
 		go func() {
 			for task := range taskQueue {
-				text, err := openAIRequest(config.OpenAIKey, task.prompt, task.systemPrompt, logger)
+				text, err := openAIRequest(config.OpenAIKey, task.model, task.prompt, task.systemPrompt, task.validateModel, logger)
 				task.reply <- result{text: text, err: err}
 			}
 		}()
@@ -120,33 +185,8 @@ func validateConfig(config Configuration) error {
 	if config.OpenAIKey == "" {
 		return fmt.Errorf("OPENAI_API_KEY must be set")
 	}
-	request, err := http.NewRequest(http.MethodGet, openAIModelsURL, nil)
-	if err != nil {
-		return err
-	}
-	request.Header.Set("Authorization", "Bearer "+config.OpenAIKey)
-	client := &http.Client{Timeout: 10 * time.Second}
-
-	start := time.Now()
-	response, err := client.Do(request)
-	latency := time.Since(start).Milliseconds()
-	if err == nil {
-		defer response.Body.Close()
-	}
-	logger := zap.NewExample().Sugar()
-	status := 0
-	if response != nil {
-		status = response.StatusCode
-	}
-	logger.Infow("OpenAI key validation",
-		"status", status,
-		"latency_ms", latency,
-	)
-	if err != nil {
+	if err := refreshModels(config.OpenAIKey, zap.NewExample().Sugar()); err != nil {
 		return fmt.Errorf("failed to validate OPENAI_API_KEY: %w", err)
-	}
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("OPENAI_API_KEY validation failed (status %d)", response.StatusCode)
 	}
 	return nil
 }
@@ -166,9 +206,15 @@ func secretMiddleware(secret string, logger *zap.SugaredLogger) gin.HandlerFunc 
 
 // openAIRequest sends the prompt and system prompt to the OpenAI chat API
 // and returns the resulting text.
-func openAIRequest(openAIKey, prompt, systemPrompt string, logger *zap.SugaredLogger) (string, error) {
+func openAIRequest(openAIKey, model, prompt, systemPrompt string, validateModel bool, logger *zap.SugaredLogger) (string, error) {
+	if validateModel {
+		if err := ensureModel(openAIKey, model, logger); err != nil {
+			return "", err
+		}
+	}
+
 	payload := map[string]any{
-		"model": "gpt-4.1",
+		"model": model,
 		"messages": []map[string]string{
 			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": prompt},
@@ -261,13 +307,25 @@ func chatHandler(taskQueue chan requestTask, systemPrompt string, logger *zap.Su
 			systemPromptOverride = systemPrompt
 		}
 
+		model := context.Query("model")
+		validateModel := false
+		if model == "" {
+			model = defaultModel
+		} else {
+			validateModel = true
+		}
+
 		reply := make(chan result, 1)
-		taskQueue <- requestTask{prompt: prompt, systemPrompt: systemPromptOverride, reply: reply}
+		taskQueue <- requestTask{prompt: prompt, systemPrompt: systemPromptOverride, model: model, validateModel: validateModel, reply: reply}
 
 		select {
 		case res := <-reply:
 			if res.err != nil {
-				context.String(http.StatusBadGateway, res.err.Error())
+				if strings.Contains(res.err.Error(), "unknown model") {
+					context.String(http.StatusBadRequest, res.err.Error())
+				} else {
+					context.String(http.StatusBadGateway, res.err.Error())
+				}
 			} else {
 				mime := preferredMime(context)
 				formatted, contentType := formatResponse(res.text, mime, prompt)
