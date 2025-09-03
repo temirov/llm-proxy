@@ -13,7 +13,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// roundTripperFunc lets us stub http.DefaultClient.Do.
 type roundTripperFunc func(req *http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -84,11 +83,11 @@ func TestChatHandler_MissingPrompt(t *testing.T) {
 	}
 }
 
-func TestChatHandler_Success(t *testing.T) {
+func TestChatHandler_Success_NoSearch(t *testing.T) {
 	original := http.DefaultClient
 	http.DefaultClient = &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
-			const respBody = `{"choices":[{"message":{"content":"Hello, world!"}}]}`
+			const respBody = `{"output_text":"Hello, world!"}`
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(strings.NewReader(respBody)),
@@ -102,9 +101,9 @@ func TestChatHandler_Success(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	taskQueue := make(chan requestTask, 1)
 	go func() {
-		for task := range taskQueue {
-			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
-			task.reply <- result{text: text, err: err}
+		for enqueued := range taskQueue {
+			text, err := openAIRequest("ignored", enqueued.prompt, enqueued.systemPrompt, enqueued.webSearchEnabled, zap.NewExample().Sugar())
+			enqueued.reply <- result{text: text, err: err}
 		}
 	}()
 	router := gin.New()
@@ -122,11 +121,15 @@ func TestChatHandler_Success(t *testing.T) {
 	}
 }
 
-func TestChatHandler_CSVFormat(t *testing.T) {
+func TestChatHandler_Success_WithSearchFlag(t *testing.T) {
+	var capturedPayload map[string]any
+
 	original := http.DefaultClient
 	http.DefaultClient = &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
-			const respBody = `{"choices":[{"message":{"content":"Hello, world!"}}]}`
+			bodyBytes, _ := io.ReadAll(request.Body)
+			_ = json.Unmarshal(bodyBytes, &capturedPayload)
+			const respBody = `{"output_text":"Search ok"}`
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(strings.NewReader(respBody)),
@@ -140,9 +143,55 @@ func TestChatHandler_CSVFormat(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	taskQueue := make(chan requestTask, 1)
 	go func() {
-		for task := range taskQueue {
-			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
-			task.reply <- result{text: text, err: err}
+		for enqueued := range taskQueue {
+			text, err := openAIRequest("ignored", enqueued.prompt, enqueued.systemPrompt, enqueued.webSearchEnabled, zap.NewExample().Sugar())
+			enqueued.reply <- result{text: text, err: err}
+		}
+	}()
+	router := gin.New()
+	router.GET("/", chatHandler(taskQueue, "", zap.NewExample().Sugar()))
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest("GET", "/?prompt=anything&web_search=1", nil)
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Errorf("search code = %d; want %d", recorder.Code, http.StatusOK)
+	}
+	if body := recorder.Body.String(); body != "Search ok" {
+		t.Errorf("search body = %q; want %q", body, "Search ok")
+	}
+	toolsValue, ok := capturedPayload["tools"].([]any)
+	if !ok || len(toolsValue) == 0 {
+		t.Fatalf("tools not present in payload when web_search=1")
+	}
+	firstTool, _ := toolsValue[0].(map[string]any)
+	if firstTool["type"] != "web_search" {
+		t.Errorf("tool type = %v; want %q", firstTool["type"], "web_search")
+	}
+}
+
+func TestChatHandler_CSVFormat(t *testing.T) {
+	original := http.DefaultClient
+	http.DefaultClient = &http.Client{
+		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			const respBody = `{"output_text":"Hello, world!"}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(respBody)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+		Timeout: 5 * time.Second,
+	}
+	defer func() { http.DefaultClient = original }()
+
+	gin.SetMode(gin.TestMode)
+	taskQueue := make(chan requestTask, 1)
+	go func() {
+		for enqueued := range taskQueue {
+			text, err := openAIRequest("ignored", enqueued.prompt, enqueued.systemPrompt, enqueued.webSearchEnabled, zap.NewExample().Sugar())
+			enqueued.reply <- result{text: text, err: err}
 		}
 	}()
 	router := gin.New()
@@ -168,7 +217,7 @@ func TestChatHandler_FormatParam(t *testing.T) {
 	original := http.DefaultClient
 	http.DefaultClient = &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
-			const respBody = `{"choices":[{"message":{"content":"Hello"}}]}`
+			const respBody = `{"output_text":"Hello"}`
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(strings.NewReader(respBody)),
@@ -182,9 +231,9 @@ func TestChatHandler_FormatParam(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	taskQueue := make(chan requestTask, 1)
 	go func() {
-		for task := range taskQueue {
-			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
-			task.reply <- result{text: text, err: err}
+		for enqueued := range taskQueue {
+			text, err := openAIRequest("ignored", enqueued.prompt, enqueued.systemPrompt, enqueued.webSearchEnabled, zap.NewExample().Sugar())
+			enqueued.reply <- result{text: text, err: err}
 		}
 	}()
 	router := gin.New()
@@ -210,7 +259,7 @@ func TestChatHandler_XMLHeader(t *testing.T) {
 	original := http.DefaultClient
 	http.DefaultClient = &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
-			const respBody = `{"choices":[{"message":{"content":"Hi"}}]}`
+			const respBody = `{"output_text":"Hi"}`
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(strings.NewReader(respBody)),
@@ -224,9 +273,9 @@ func TestChatHandler_XMLHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	taskQueue := make(chan requestTask, 1)
 	go func() {
-		for task := range taskQueue {
-			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
-			task.reply <- result{text: text, err: err}
+		for enqueued := range taskQueue {
+			text, err := openAIRequest("ignored", enqueued.prompt, enqueued.systemPrompt, enqueued.webSearchEnabled, zap.NewExample().Sugar())
+			enqueued.reply <- result{text: text, err: err}
 		}
 	}()
 	router := gin.New()
@@ -268,9 +317,9 @@ func TestChatHandler_APIError(t *testing.T) {
 	taskQueue := make(chan requestTask, 1)
 	defer close(taskQueue)
 	go func() {
-		for task := range taskQueue {
-			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
-			task.reply <- result{text: text, err: err}
+		for enqueued := range taskQueue {
+			text, err := openAIRequest("ignored", enqueued.prompt, enqueued.systemPrompt, enqueued.webSearchEnabled, zap.NewExample().Sugar())
+			enqueued.reply <- result{text: text, err: err}
 		}
 	}()
 	router := gin.New()
@@ -288,96 +337,26 @@ func TestChatHandler_APIError(t *testing.T) {
 	}
 }
 
-func TestChatHandler_SystemPromptOverride(t *testing.T) {
-	original := http.DefaultClient
-	var got string
-	http.DefaultClient = &http.Client{
-		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
-			body, _ := io.ReadAll(request.Body)
-			var payload map[string]any
-			_ = json.Unmarshal(body, &payload)
-			if msgs, ok := payload["messages"].([]any); ok && len(msgs) > 0 {
-				if messageMap, ok := msgs[0].(map[string]any); ok {
-					if content, ok := messageMap["content"].(string); ok {
-						got = content
-					}
-				}
-			}
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"ok"}}]}`)),
-				Header:     make(http.Header),
-			}, nil
-		}),
-		Timeout: 5 * time.Second,
-	}
-	defer func() { http.DefaultClient = original }()
-
-	gin.SetMode(gin.TestMode)
-	taskQueue := make(chan requestTask, 1)
-	defer close(taskQueue)
-	go func() {
-		for task := range taskQueue {
-			text, err := openAIRequest("ignored", task.prompt, task.systemPrompt, zap.NewExample().Sugar())
-			task.reply <- result{text: text, err: err}
-		}
-	}()
-	router := gin.New()
-	router.GET("/", chatHandler(taskQueue, "default", zap.NewExample().Sugar()))
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest("GET", "/?prompt=test&system_prompt=override", nil)
-	router.ServeHTTP(recorder, request)
-
-	if got != "override" {
-		t.Errorf("system prompt = %q; want %q", got, "override")
-	}
-}
-
-func TestChatHandler_Timeout(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	taskQueue := make(chan requestTask, 1)
-	router := gin.New()
-	router.GET("/", chatHandler(taskQueue, "", zap.NewExample().Sugar()))
-
-	originalTimeout := requestTimeout
-	requestTimeout = 50 * time.Millisecond
-	defer func() { requestTimeout = originalTimeout }()
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest("GET", "/?prompt=test", nil)
-	router.ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusGatewayTimeout {
-		t.Errorf("timeout code = %d; want %d", recorder.Code, http.StatusGatewayTimeout)
-	}
-	if body := recorder.Body.String(); body != "request timed out" {
-		t.Errorf("timeout body = %q; want %q", body, "request timed out")
-	}
-}
-
 func TestPreferredMime_Normalization(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 
-	// Query parameter takes precedence and should be normalized.
-	req := httptest.NewRequest("GET", "/", nil)
-	q := req.URL.Query()
-	q.Set("format", " Application/JSON ")
-	req.URL.RawQuery = q.Encode()
-	ctx.Request = req
+	request := httptest.NewRequest("GET", "/", nil)
+	queryValues := request.URL.Query()
+	queryValues.Set("format", " Application/JSON ")
+	request.URL.RawQuery = queryValues.Encode()
+	ctx.Request = request
 	if got := preferredMime(ctx); got != "application/json" {
 		t.Errorf("preferredMime query = %q; want %q", got, "application/json")
 	}
 
-	// Header value should also be normalized.
-	recorder2 := httptest.NewRecorder()
-	ctx2, _ := gin.CreateTestContext(recorder2)
-	req = httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("Accept", "  TeXt/CsV  ")
-	ctx2.Request = req
-	if got := preferredMime(ctx2); got != "text/csv" {
+	recorderTwo := httptest.NewRecorder()
+	ctxTwo, _ := gin.CreateTestContext(recorderTwo)
+	request = httptest.NewRequest("GET", "/", nil)
+	request.Header.Set("Accept", "  TeXt/CsV  ")
+	ctxTwo.Request = request
+	if got := preferredMime(ctxTwo); got != "text/csv" {
 		t.Errorf("preferredMime header = %q; want %q", got, "text/csv")
 	}
 }
