@@ -8,9 +8,11 @@ other services without embedding API credentials in each client.
 ## Features
 
 - Minimal HTTP server that accepts `GET /?prompt=...&key=...` requests
+- Choose the **OpenAI model** per request via `model=...` (default: `gpt-4.1`)
 - Optional per-request **web search** via `web_search=1|true|yes`
 - Optional logging at `debug` or `info` levels
 - Forwards requests to the OpenAI API using your existing API key
+- Supports plain text, JSON, XML, or CSV responses
 
 ## Configuration
 
@@ -27,7 +29,7 @@ variables:
 | `--workers` / `GPT_WORKERS`           | Number of worker goroutines (default `4`)           |
 | `--queue_size` / `GPT_QUEUE_SIZE`     | Request queue size (default `100`)                  |
 
-> **Note:** Web search is **per request**. Use the query parameter `web_search=1` to enable it for a given call.
+> **Note:** Web search is **per request**, enabled by adding `web_search=1` to your query.
 
 ## Running
 
@@ -46,7 +48,7 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx \
 
 ## Usage
 
-### Basic request (no web search)
+### Basic request (default model, no web search)
 
 ```shell
 curl --get \
@@ -55,13 +57,23 @@ curl --get \
   "http://localhost:8080/"
 ```
 
-### Enable web search for this request
+### Choose a model
+
+```shell
+curl --get \
+  --data-urlencode "prompt=Summarize quantum error correction" \
+  --data-urlencode "key=mysecret" \
+  --data-urlencode "model=gpt-4o" \
+  "http://localhost:8080/"
+```
+
+### Enable web search
 
 ```shell
 curl --get \
   --data-urlencode "prompt=What changed in the 2025 child tax credit?" \
-  --data-urlencode "web_search=1" \
   --data-urlencode "key=mysecret" \
+  --data-urlencode "web_search=1" \
   "http://localhost:8080/"
 ```
 
@@ -83,14 +95,19 @@ If no supported value is provided, `text/plain` is returned.
 GET /
   ?prompt=STRING            # required
   &key=SERVICE_SECRET       # required
+  &model=MODEL_NAME         # optional; defaults to gpt-4.1
   &web_search=1|true|yes    # optional; enables OpenAI web_search tool
   &format=CONTENT_TYPE      # optional; or use Accept header
 ```
 
+Supported models include any listed in `/v1/models` from the OpenAI API
+(e.g. `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`).
+Not all models support tools; for **web search**, use `gpt-4o` or `gpt-4.1`.
+
 ### Status codes
 
 * `200 OK` – success
-* `400 Bad Request` – missing required parameters or bad model
+* `400 Bad Request` – missing required parameters or unknown model
 * `403 Forbidden` – missing or invalid `key`
 * `504 Gateway Timeout` – upstream request timed out
 * `502 Bad Gateway` – OpenAI API returned an error
