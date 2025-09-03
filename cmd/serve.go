@@ -16,13 +16,13 @@ import (
 )
 
 const (
-	openAIURL        = "https://api.openai.com/v1/chat/completions"
-	openAIModelsURL  = "https://api.openai.com/v1/models"
-	defaultPort      = 8080
-	defaultWorkers   = 4
-	defaultQueueSize = 100
-	defaultModel     = "gpt-4.1"
-	modelsCacheTTL   = 24 * time.Hour
+	openAIResponsesURL = "https://api.openai.com/v1/responses"
+	openAIModelsURL    = "https://api.openai.com/v1/models"
+	defaultPort        = 8080
+	defaultWorkers     = 4
+	defaultQueueSize   = 100
+	defaultModel       = "gpt-4.1"
+	modelsCacheTTL     = 24 * time.Hour
 )
 
 var requestTimeout = 30 * time.Second
@@ -46,7 +46,7 @@ type Configuration struct {
 	QueueSize     int
 }
 
-type proxyResponse struct {
+type responsesAPIShim struct {
 	Choices []struct {
 		Message struct {
 			Content string `json:"content"`
@@ -60,33 +60,34 @@ type result struct {
 }
 
 type requestTask struct {
-	prompt       string
-	systemPrompt string
-	model        string
-	reply        chan result
+	prompt           string
+	systemPrompt     string
+	model            string
+	webSearchEnabled bool
+	reply            chan result
 }
 
 func newModelValidator(openAIKey string, logger *zap.SugaredLogger) (*modelValidator, error) {
-	v := &modelValidator{apiKey: openAIKey, logger: logger}
-	if err := v.refresh(); err != nil {
+	validator := &modelValidator{apiKey: openAIKey, logger: logger}
+	if err := validator.refresh(); err != nil {
 		return nil, err
 	}
-	return v, nil
+	return validator, nil
 }
 
-func (v *modelValidator) refresh() error {
+func (validator *modelValidator) refresh() error {
 	request, _ := http.NewRequest(http.MethodGet, openAIModelsURL, nil)
-	request.Header.Set("Authorization", "Bearer "+v.apiKey)
+	request.Header.Set("Authorization", "Bearer "+validator.apiKey)
 
-	start := time.Now()
-	response, err := http.DefaultClient.Do(request)
-	latency := time.Since(start).Milliseconds()
-	if err != nil {
-		v.logger.Errorw("OpenAI models list error", "err", err, "latency_ms", latency)
-		return err
+	startTime := time.Now()
+	response, requestErr := http.DefaultClient.Do(request)
+	latency := time.Since(startTime).Milliseconds()
+	if requestErr != nil {
+		validator.logger.Errorw("OpenAI models list error", "err", requestErr, "latency_ms", latency)
+		return requestErr
 	}
 	defer response.Body.Close()
-	v.logger.Infow("OpenAI models list", "status", response.StatusCode, "latency_ms", latency)
+	validator.logger.Infow("OpenAI models list", "status", response.StatusCode, "latency_ms", latency)
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("OpenAI models list error")
 	}
@@ -98,31 +99,31 @@ func (v *modelValidator) refresh() error {
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
 		return err
 	}
-	models := make(map[string]struct{}, len(payload.Data))
-	for _, m := range payload.Data {
-		models[m.ID] = struct{}{}
+	modelSet := make(map[string]struct{}, len(payload.Data))
+	for _, modelInfo := range payload.Data {
+		modelSet[modelInfo.ID] = struct{}{}
 	}
-	v.mu.Lock()
-	v.models = models
-	v.expiry = time.Now().Add(modelsCacheTTL)
-	v.mu.Unlock()
+	validator.mu.Lock()
+	validator.models = modelSet
+	validator.expiry = time.Now().Add(modelsCacheTTL)
+	validator.mu.Unlock()
 	return nil
 }
 
-func (v *modelValidator) Verify(model string) error {
-	v.mu.RLock()
-	expiry := v.expiry
-	_, ok := v.models[model]
-	v.mu.RUnlock()
-	if time.Now().After(expiry) || v.models == nil {
-		if err := v.refresh(); err != nil {
+func (validator *modelValidator) Verify(model string) error {
+	validator.mu.RLock()
+	cacheExpiry := validator.expiry
+	_, present := validator.models[model]
+	validator.mu.RUnlock()
+	if time.Now().After(cacheExpiry) || validator.models == nil {
+		if err := validator.refresh(); err != nil {
 			return fmt.Errorf("OpenAI model validation error")
 		}
-		v.mu.RLock()
-		_, ok = v.models[model]
-		v.mu.RUnlock()
+		validator.mu.RLock()
+		_, present = validator.models[model]
+		validator.mu.RUnlock()
 	}
-	if !ok {
+	if !present {
 		return fmt.Errorf("unknown model: %s", model)
 	}
 	return nil
@@ -131,23 +132,23 @@ func (v *modelValidator) Verify(model string) error {
 // requestResponseLogger logs request arrival and response metadata at INFO.
 func requestResponseLogger(logger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(context *gin.Context) {
-		start := time.Now()
-		method := context.Request.Method
-		path := context.Request.URL.RequestURI()
-		ip := context.ClientIP()
+		startTime := time.Now()
+		requestMethod := context.Request.Method
+		requestPath := context.Request.URL.RequestURI()
+		clientAddress := context.ClientIP()
 
 		logger.Infow("request received",
-			"method", method,
-			"path", path,
-			"client_ip", ip,
+			"method", requestMethod,
+			"path", requestPath,
+			"client_ip", clientAddress,
 		)
 
 		context.Next()
 
-		status := context.Writer.Status()
-		latency := time.Since(start).Milliseconds()
+		httpStatus := context.Writer.Status()
+		latency := time.Since(startTime).Milliseconds()
 		logger.Infow("response sent",
-			"status", status,
+			"status", httpStatus,
 			"latency_ms", latency,
 		)
 	}
@@ -159,9 +160,9 @@ func serve(config Configuration, logger *zap.SugaredLogger) error {
 		return err
 	}
 
-	validator, err := newModelValidator(config.OpenAIKey, logger)
-	if err != nil {
-		return err
+	validator, validatorErr := newModelValidator(config.OpenAIKey, logger)
+	if validatorErr != nil {
+		return validatorErr
 	}
 
 	if config.LogLevel == "debug" {
@@ -178,9 +179,16 @@ func serve(config Configuration, logger *zap.SugaredLogger) error {
 	taskQueue := make(chan requestTask, config.QueueSize)
 	for workerIndex := 0; workerIndex < config.WorkerCount; workerIndex++ {
 		go func() {
-			for task := range taskQueue {
-				text, err := openAIRequest(config.OpenAIKey, task.model, task.prompt, task.systemPrompt, logger)
-				task.reply <- result{text: text, err: err}
+			for pendingTask := range taskQueue {
+				responseText, requestErr := openAIRequest(
+					config.OpenAIKey,
+					pendingTask.model,
+					pendingTask.prompt,
+					pendingTask.systemPrompt,
+					pendingTask.webSearchEnabled,
+					logger,
+				)
+				pendingTask.reply <- result{text: responseText, err: requestErr}
 			}
 		}()
 	}
@@ -214,44 +222,59 @@ func secretMiddleware(secret string, logger *zap.SugaredLogger) gin.HandlerFunc 
 	}
 }
 
-// openAIRequest sends the prompt and system prompt to the OpenAI chat API
-// and returns the resulting text.
-func openAIRequest(openAIKey, model, prompt, systemPrompt string, logger *zap.SugaredLogger) (string, error) {
-	payload := map[string]any{
-		"model": model,
-		"messages": []map[string]string{
-			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": prompt},
-		},
-		"temperature": 0.7,
-		"max_tokens":  1024,
+func openAIRequest(openAIKey, model, prompt, systemPrompt string, webSearchEnabled bool, logger *zap.SugaredLogger) (string, error) {
+	messageArray := []map[string]string{
+		{"role": "system", "content": systemPrompt},
+		{"role": "user", "content": prompt},
 	}
-	bodyBytes, _ := json.Marshal(payload)
-	request, _ := http.NewRequest(http.MethodPost, openAIURL, bytes.NewReader(bodyBytes))
+
+	requestPayload := map[string]any{
+		"model":             model,
+		"input":             messageArray,
+		"temperature":       0.7,
+		"max_output_tokens": 1024,
+	}
+
+	if webSearchEnabled {
+		requestPayload["tools"] = []any{
+			map[string]any{"type": "web_search"},
+		}
+	}
+
+	bodyBytes, _ := json.Marshal(requestPayload)
+	request, _ := http.NewRequest(http.MethodPost, openAIResponsesURL, bytes.NewReader(bodyBytes))
 	request.Header.Set("Authorization", "Bearer "+openAIKey)
 	request.Header.Set("Content-Type", "application/json")
 
-	start := time.Now()
+	startTime := time.Now()
 	response, err := http.DefaultClient.Do(request)
-	latency := time.Since(start).Milliseconds()
+	latency := time.Since(startTime).Milliseconds()
 	if err != nil {
 		logger.Errorw("OpenAI request error", "err", err, "latency_ms", latency)
 		return "", fmt.Errorf("OpenAI request error")
 	}
 	defer response.Body.Close()
 	responseBytes, _ := io.ReadAll(response.Body)
-	content := ""
+
+	responseText := ""
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
-		var proxyResp proxyResponse
-		if jsonErr := json.Unmarshal(responseBytes, &proxyResp); jsonErr == nil && len(proxyResp.Choices) > 0 {
-			content = proxyResp.Choices[0].Message.Content
+		var responsesShape map[string]any
+		if json.Unmarshal(responseBytes, &responsesShape) == nil {
+			if direct, ok := responsesShape["output_text"].(string); ok && direct != "" {
+				responseText = direct
+			} else {
+				var shim responsesAPIShim
+				if json.Unmarshal(responseBytes, &shim) == nil && len(shim.Choices) > 0 {
+					responseText = shim.Choices[0].Message.Content
+				}
+			}
 		}
 	}
 
 	logger.Infow("OpenAI API response",
 		"status", response.StatusCode,
 		"latency_ms", latency,
-		"response_text", content,
+		"response_text", responseText,
 	)
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -259,7 +282,7 @@ func openAIRequest(openAIKey, model, prompt, systemPrompt string, logger *zap.Su
 		return "", fmt.Errorf("OpenAI API error")
 	}
 
-	return content, nil
+	return responseText, nil
 }
 
 // preferredMime returns the client's requested MIME type via the "format"
@@ -269,7 +292,6 @@ func preferredMime(ctx *gin.Context) string {
 		return strings.ToLower(strings.TrimSpace(formatParam))
 	}
 	return strings.ToLower(strings.TrimSpace(ctx.GetHeader("Accept")))
-
 }
 
 // formatResponse converts the model output to the requested MIME type and
@@ -300,8 +322,8 @@ func formatResponse(text, mime, prompt string) (string, string) {
 // and returning the formatted response or an error to the client.
 func chatHandler(taskQueue chan requestTask, systemPrompt string, validator *modelValidator, logger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(context *gin.Context) {
-		prompt := context.Query("prompt")
-		if prompt == "" {
+		userPrompt := context.Query("prompt")
+		if userPrompt == "" {
 			context.String(http.StatusBadRequest, "missing prompt parameter")
 			return
 		}
@@ -311,30 +333,39 @@ func chatHandler(taskQueue chan requestTask, systemPrompt string, validator *mod
 			systemPromptOverride = systemPrompt
 		}
 
-		model := context.Query("model")
-		if model == "" {
-			model = defaultModel
+		modelParam := context.Query("model")
+		if modelParam == "" {
+			modelParam = defaultModel
 		}
-		if err := validator.Verify(model); err != nil {
+		if err := validator.Verify(modelParam); err != nil {
 			context.String(http.StatusBadRequest, err.Error())
 			return
 		}
 
-		reply := make(chan result, 1)
-		taskQueue <- requestTask{prompt: prompt, systemPrompt: systemPromptOverride, model: model, reply: reply}
+		webSearchParam := strings.TrimSpace(strings.ToLower(context.Query("web_search")))
+		webSearchEnabled := webSearchParam == "1" || webSearchParam == "true" || webSearchParam == "yes"
+
+		replyChannel := make(chan result, 1)
+		taskQueue <- requestTask{
+			prompt:           userPrompt,
+			systemPrompt:     systemPromptOverride,
+			model:            modelParam,
+			webSearchEnabled: webSearchEnabled,
+			reply:            replyChannel,
+		}
 
 		select {
-		case res := <-reply:
-			if res.err != nil {
-				if strings.Contains(res.err.Error(), "unknown model") {
-					context.String(http.StatusBadRequest, res.err.Error())
+		case computation := <-replyChannel:
+			if computation.err != nil {
+				if strings.Contains(computation.err.Error(), "unknown model") {
+					context.String(http.StatusBadRequest, computation.err.Error())
 				} else {
-					context.String(http.StatusBadGateway, res.err.Error())
+					context.String(http.StatusBadGateway, computation.err.Error())
 				}
 			} else {
-				mime := preferredMime(context)
-				formatted, contentType := formatResponse(res.text, mime, prompt)
-				context.Data(http.StatusOK, contentType, []byte(formatted))
+				requestedMime := preferredMime(context)
+				formattedBody, contentType := formatResponse(computation.text, requestedMime, userPrompt)
+				context.Data(http.StatusOK, contentType, []byte(formattedBody))
 			}
 		case <-time.After(requestTimeout):
 			context.String(http.StatusGatewayTimeout, "request timed out")

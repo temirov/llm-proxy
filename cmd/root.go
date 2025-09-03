@@ -27,7 +27,7 @@ var rootCmd = &cobra.Command{
 	Long:  "Accepts GET /?prompt=…&key=SECRET and forwards to OpenAI.",
 	Example: `llm-proxy --service_secret=mysecret --openai_api_key=sk-xxxxx --log_level=debug
 SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(command *cobra.Command, arguments []string) error {
 		if config.ServiceSecret == "" {
 			config.ServiceSecret = viper.GetString("service_secret")
 		}
