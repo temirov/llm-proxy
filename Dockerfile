@@ -6,7 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o llm-proxy ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o llm-proxy ./cmd/cli
 
 # Runtime stage
 FROM debian:bullseye-slim
