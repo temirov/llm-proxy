@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/temirov/llm-proxy/internal/utils"
 	"go.uber.org/zap"
 )
@@ -70,7 +69,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return "", errors.New(errorRequestBuild)
 	}
 
-	statusCode, responseBytes, latencyMillis, transportError := performJSONRequest(httpRequest, structuredLogger, logEventOpenAIRequestError)
+	statusCode, responseBytes, latencyMillis, transportError := utils.PerformHTTPRequest(HTTPClient.Do, httpRequest, structuredLogger, logEventOpenAIRequestError)
 	if transportError != nil {
 		return "", errors.New(errorOpenAIRequest)
 	}
@@ -90,7 +89,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 			structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildRetryError)
 			return "", errors.New(errorRequestBuild)
 		}
-		statusCode, responseBytes, latencyMillis, transportError = performJSONRequest(retryRequest, structuredLogger, logEventOpenAIRequestError)
+		statusCode, responseBytes, latencyMillis, transportError = utils.PerformHTTPRequest(HTTPClient.Do, retryRequest, structuredLogger, logEventOpenAIRequestError)
 		if transportError != nil {
 			return "", errors.New(errorOpenAIRequest)
 		}
@@ -112,7 +111,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 			structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildRetryError)
 			return "", errors.New(errorRequestBuild)
 		}
-		statusCode, responseBytes, latencyMillis, transportError = performJSONRequest(retryRequest, structuredLogger, logEventOpenAIRequestError)
+		statusCode, responseBytes, latencyMillis, transportError = utils.PerformHTTPRequest(HTTPClient.Do, retryRequest, structuredLogger, logEventOpenAIRequestError)
 		if transportError != nil {
 			return "", errors.New(errorOpenAIRequest)
 		}
@@ -194,7 +193,7 @@ func fetchResponseByID(contextToUse context.Context, openAIKey string, responseI
 	}
 	httpRequest = httpRequest.WithContext(contextToUse)
 
-	_, responseBytes, _, transportError := performJSONRequest(httpRequest, structuredLogger, logEventOpenAIPollError)
+	_, responseBytes, _, transportError := utils.PerformHTTPRequest(HTTPClient.Do, httpRequest, structuredLogger, logEventOpenAIPollError)
 	if transportError != nil {
 		return "", false, errors.New(errorOpenAIRequest)
 	}
@@ -302,43 +301,4 @@ func buildAuthorizedJSONRequest(method string, resourceURL string, openAIKey str
 	httpRequest.Header.Set(headerAuthorization, headerAuthorizationPrefix+openAIKey)
 	httpRequest.Header.Set(headerContentType, mimeApplicationJSON)
 	return httpRequest, nil
-}
-
-// performJSONRequest executes an HTTP request and returns the status code, body, and latency.
-// Transport errors are logged using the provided logger.
-func performJSONRequest(httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEventOnTransportError string) (int, []byte, int64, error) {
-	startTime := time.Now()
-	var httpResponse *http.Response
-	operation := func() error {
-		if httpRequest.GetBody != nil {
-			resetBody, resetError := httpRequest.GetBody()
-			if resetError != nil {
-				return resetError
-			}
-			httpRequest.Body = resetBody
-		}
-		response, httpError := HTTPClient.Do(httpRequest)
-		if httpError != nil {
-			structuredLogger.Errorw(logEventOnTransportError, logFieldError, httpError)
-			return httpError
-		}
-		httpResponse = response
-		return nil
-	}
-
-	exponentialBackoff := backoff.NewExponentialBackOff()
-	retryError := backoff.Retry(operation, backoff.WithContext(exponentialBackoff, httpRequest.Context()))
-	latencyMillis := time.Since(startTime).Milliseconds()
-	if retryError != nil {
-		structuredLogger.Errorw(logEventOnTransportError, logFieldError, retryError, logFieldLatencyMs, latencyMillis)
-		return 0, nil, latencyMillis, retryError
-	}
-	defer httpResponse.Body.Close()
-
-	responseBytes, readError := io.ReadAll(httpResponse.Body)
-	if readError != nil {
-		structuredLogger.Errorw(logEventReadResponseBodyFailed, logFieldError, readError)
-		return httpResponse.StatusCode, nil, latencyMillis, readError
-	}
-	return httpResponse.StatusCode, responseBytes, latencyMillis, nil
 }
