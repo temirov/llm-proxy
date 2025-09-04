@@ -14,14 +14,6 @@ import (
 )
 
 const (
-	timeoutServiceSecret      = "sekret"
-	timeoutOpenAIKey          = "sk-test"
-	timeoutModelsURL          = "https://mock.local/v1/models"
-	timeoutResponsesURL       = "https://mock.local/v1/responses"
-	timeoutModelsListBody     = `{"data":[{"id":"gpt-4.1"}]}`
-	timeoutPromptParameter    = "prompt"
-	timeoutKeyParameter       = "key"
-	timeoutPromptValue        = "ping"
 	timeoutExpectedStatusCode = http.StatusGatewayTimeout
 	timeoutRequestTimeout     = 1
 	timeoutUpstreamDelay      = 3 * time.Second
@@ -35,7 +27,7 @@ func makeTimeoutHTTPClient(testingInstance *testing.T) *http.Client {
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 			switch request.URL.String() {
 			case proxy.ModelsURL():
-				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(timeoutModelsListBody)), Header: make(http.Header)}, nil
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(modelsListBody)), Header: make(http.Header)}, nil
 			case proxy.ResponsesURL():
 				select {
 				case <-request.Context().Done():
@@ -52,40 +44,37 @@ func makeTimeoutHTTPClient(testingInstance *testing.T) *http.Client {
 	}
 }
 
-// TestIntegration_UpstreamRequestTimeoutTriggersGatewayTimeout verifies upstream timeouts result in a gateway timeout before the upstream delay elapses.
-func TestIntegration_UpstreamRequestTimeoutTriggersGatewayTimeout(testingInstance *testing.T) {
+// TestIntegrationUpstreamRequestTimeoutTriggersGatewayTimeout verifies upstream timeouts result in a gateway timeout before the upstream delay elapses.
+func TestIntegrationUpstreamRequestTimeoutTriggersGatewayTimeout(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
-	proxy.HTTPClient = makeTimeoutHTTPClient(testingInstance)
-	proxy.SetModelsURL(timeoutModelsURL)
-	proxy.SetResponsesURL(timeoutResponsesURL)
-	testingInstance.Cleanup(proxy.ResetModelsURL)
-	testingInstance.Cleanup(proxy.ResetResponsesURL)
-
-	router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: timeoutServiceSecret, OpenAIKey: timeoutOpenAIKey, LogLevel: "debug", WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: timeoutRequestTimeout}, newLogger(testingInstance))
-	if buildError != nil {
-		testingInstance.Fatalf("BuildRouter failed: %v", buildError)
-	}
-	server := httptest.NewServer(router)
-	testingInstance.Cleanup(server.Close)
-
-	requestURL, _ := url.Parse(server.URL)
-	queryValues := requestURL.Query()
-	queryValues.Set(timeoutPromptParameter, timeoutPromptValue)
-	queryValues.Set(timeoutKeyParameter, timeoutServiceSecret)
-	requestURL.RawQuery = queryValues.Encode()
-
-	startInstant := time.Now()
-	httpResponse, requestError := http.Get(requestURL.String())
-	elapsedDuration := time.Since(startInstant)
-	if requestError != nil {
-		testingInstance.Fatalf("GET failed: %v", requestError)
-	}
-	defer httpResponse.Body.Close()
-
-	if httpResponse.StatusCode != timeoutExpectedStatusCode {
-		testingInstance.Fatalf("status=%d want=%d", httpResponse.StatusCode, timeoutExpectedStatusCode)
-	}
-	if elapsedDuration >= timeoutUpstreamDelay {
-		testingInstance.Fatalf("elapsed=%v exceeds upstream delay %v", elapsedDuration, timeoutUpstreamDelay)
+	testCases := []struct{ name string }{{name: "gateway_timeout"}}
+	for _, testCase := range testCases {
+		testingInstance.Run(testCase.name, func(subTest *testing.T) {
+			configureProxy(subTest, makeTimeoutHTTPClient(subTest))
+			router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: "debug", WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: timeoutRequestTimeout}, newLogger(subTest))
+			if buildError != nil {
+				subTest.Fatalf("BuildRouter failed: %v", buildError)
+			}
+			server := httptest.NewServer(router)
+			subTest.Cleanup(server.Close)
+			requestURL, _ := url.Parse(server.URL)
+			queryValues := requestURL.Query()
+			queryValues.Set(promptQueryParameter, promptValue)
+			queryValues.Set(keyQueryParameter, serviceSecretValue)
+			requestURL.RawQuery = queryValues.Encode()
+			startInstant := time.Now()
+			httpResponse, requestError := http.Get(requestURL.String())
+			elapsedDuration := time.Since(startInstant)
+			if requestError != nil {
+				subTest.Fatalf("GET failed: %v", requestError)
+			}
+			defer httpResponse.Body.Close()
+			if httpResponse.StatusCode != timeoutExpectedStatusCode {
+				subTest.Fatalf("status=%d want=%d", httpResponse.StatusCode, timeoutExpectedStatusCode)
+			}
+			if elapsedDuration >= timeoutUpstreamDelay {
+				subTest.Fatalf("elapsed=%v exceeds upstream delay %v", elapsedDuration, timeoutUpstreamDelay)
+			}
+		})
 	}
 }
