@@ -34,9 +34,9 @@ func makeSlowHTTPClient(testingInstance *testing.T) *http.Client {
 	return &http.Client{
 		Transport: rt(func(request *http.Request) (*http.Response, error) {
 			switch request.URL.String() {
-			case proxy.ModelsURL:
+			case proxy.ModelsURL():
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(modelsListBody)), Header: make(http.Header)}, nil
-			case proxy.ResponsesURL:
+			case proxy.ResponsesURL():
 				time.Sleep(responseDelay)
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"output_text":"` + expectedResponseBody + `"}`)), Header: make(http.Header)}, nil
 			default:
@@ -52,8 +52,8 @@ func makeSlowHTTPClient(testingInstance *testing.T) *http.Client {
 func TestIntegration_ResponseDeliveredAfterDelay(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
 	proxy.HTTPClient = makeSlowHTTPClient(testingInstance)
-	proxy.ModelsURL = mockModelsURL
-	proxy.ResponsesURL = mockResponsesURL
+	proxy.SetModelsURL(mockModelsURL)
+	proxy.SetResponsesURL(mockResponsesURL)
 	router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: "debug", WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: requestTimeoutSecondsDefault}, newLogger(testingInstance))
 	if buildError != nil {
 		testingInstance.Fatalf("BuildRouter failed: %v", buildError)
