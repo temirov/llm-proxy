@@ -13,6 +13,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// ErrUnknownModel is returned when a model identifier is not recognized.
+var ErrUnknownModel = errors.New(errorUnknownModel)
+
 // modelValidator caches known model identifiers from the upstream service.
 type modelValidator struct {
 	// modelMutex guards access to models and expiry.
@@ -99,7 +102,7 @@ func (validator *modelValidator) Verify(modelIdentifier string) error {
 		validator.modelMutex.RUnlock()
 	}
 	if !known {
-		return fmt.Errorf("unknown model: %s", modelIdentifier)
+		return fmt.Errorf("%w: %s", ErrUnknownModel, modelIdentifier)
 	}
 	return nil
 }
