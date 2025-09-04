@@ -52,6 +52,13 @@ const (
 	quoteCharacters = "\"'"
 )
 
+const (
+	// messageServiceSecretEmpty is logged when SERVICE_SECRET is missing.
+	messageServiceSecretEmpty = "SERVICE_SECRET is empty; refusing to start"
+	// messageOpenAIAPIKeyEmpty is logged when OPENAI_API_KEY is missing.
+	messageOpenAIAPIKeyEmpty = "OPENAI_API_KEY is empty; refusing to start"
+)
+
 var config proxy.Configuration
 
 // Execute runs the command-line interface.
@@ -137,11 +144,11 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 		sugar := logger.Sugar()
 
 		if strings.TrimSpace(config.ServiceSecret) == "" {
-			sugar.Error("SERVICE_SECRET is empty; refusing to start")
+			sugar.Error(messageServiceSecretEmpty)
 			return apperrors.ErrMissingServiceSecret
 		}
 		if strings.TrimSpace(config.OpenAIKey) == "" {
-			sugar.Error("OPENAI_API_KEY is empty; refusing to start")
+			sugar.Error(messageOpenAIAPIKeyEmpty)
 			return apperrors.ErrMissingOpenAIKey
 		}
 
