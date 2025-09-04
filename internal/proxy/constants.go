@@ -74,6 +74,8 @@ const (
 	logFieldHTTPStatus   = "http_status"
 	logFieldAPIStatus    = "api_status"
 	logFieldResponseText = "response_text"
+	// logFieldResponseBody captures the raw body returned by the upstream API.
+	logFieldResponseBody = "response_body"
 	logFieldMethod       = "method"
 	logFieldPath         = "path"
 	logFieldClientIP     = "client_ip"

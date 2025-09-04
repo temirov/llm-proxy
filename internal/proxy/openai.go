@@ -42,6 +42,13 @@ type responsesAPIShim struct {
 	} `json:"choices"`
 }
 
+const (
+	// unsupportedTemperatureParameterToken marks an error response mentioning the temperature parameter.
+	unsupportedTemperatureParameterToken = "'temperature'"
+	// unsupportedToolsParameterToken marks an error response mentioning the tools parameter.
+	unsupportedToolsParameterToken = "'tools'"
+)
+
 // openAIRequest sends a prompt to the OpenAI responses API and returns the resulting text.
 // It retries without unsupported parameters and polls for completion when needed.
 func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, systemPrompt string, webSearchEnabled bool, structuredLogger *zap.SugaredLogger) (string, error) {
@@ -85,7 +92,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	}
 
 	if statusCode >= http.StatusBadRequest &&
-		strings.Contains(string(responseBytes), "'temperature'") &&
+		bytes.Contains(responseBytes, []byte(unsupportedTemperatureParameterToken)) &&
 		requestPayload[keyTemperature] != nil {
 		structuredLogger.Infow(logEventRetryingWithoutParam, "parameter", keyTemperature)
 		delete(requestPayload, keyTemperature)
@@ -108,7 +115,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	}
 
 	if statusCode >= http.StatusBadRequest &&
-		strings.Contains(string(responseBytes), "'tools'") &&
+		bytes.Contains(responseBytes, []byte(unsupportedToolsParameterToken)) &&
 		requestPayload[keyTools] != nil {
 		structuredLogger.Infow(logEventRetryingWithoutParam, "parameter", keyTools)
 		delete(requestPayload, keyTools)
@@ -150,7 +157,11 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	)
 
 	if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
-		structuredLogger.Errorw(errorOpenAIAPI, "status", statusCode, "body", string(responseBytes))
+		structuredLogger.Desugar().Error(
+			errorOpenAIAPI,
+			zap.Int(logFieldStatus, statusCode),
+			zap.ByteString(logFieldResponseBody, responseBytes),
+		)
 		return "", errors.New(errorOpenAIAPI)
 	}
 
@@ -167,14 +178,22 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 			return "", errors.New(errorOpenAIAPI)
 		}
 		if utils.IsBlank(finalText) {
-			structuredLogger.Errorw(errorOpenAIAPI, "status", statusCode, "body", string(responseBytes))
+			structuredLogger.Desugar().Error(
+				errorOpenAIAPI,
+				zap.Int(logFieldStatus, statusCode),
+				zap.ByteString(logFieldResponseBody, responseBytes),
+			)
 			return "", errors.New(errorOpenAIAPINoText)
 		}
 		return finalText, nil
 	}
 
 	if utils.IsBlank(outputText) {
-		structuredLogger.Errorw(errorOpenAIAPI, "status", statusCode, "body", string(responseBytes))
+		structuredLogger.Desugar().Error(
+			errorOpenAIAPI,
+			zap.Int(logFieldStatus, statusCode),
+			zap.ByteString(logFieldResponseBody, responseBytes),
+		)
 		return "", errors.New(errorOpenAIAPI)
 	}
 	return outputText, nil
