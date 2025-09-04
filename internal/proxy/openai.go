@@ -110,6 +110,9 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 
 	statusCode, responseBytes, latencyMillis, requestError := performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIRequestError)
 	if requestError != nil {
+		if errors.Is(requestError, context.DeadlineExceeded) {
+			return "", requestError
+		}
 		return "", errors.New(errorOpenAIRequest)
 	}
 
@@ -132,6 +135,9 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		}
 		statusCode, responseBytes, latencyMillis, requestError = performResponsesRequest(retryRequest, structuredLogger, logEventOpenAIRequestError)
 		if requestError != nil {
+			if errors.Is(requestError, context.DeadlineExceeded) {
+				return "", requestError
+			}
 			return "", errors.New(errorOpenAIRequest)
 		}
 	}
@@ -156,6 +162,9 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		}
 		statusCode, responseBytes, latencyMillis, requestError = performResponsesRequest(retryRequest, structuredLogger, logEventOpenAIRequestError)
 		if requestError != nil {
+			if errors.Is(requestError, context.DeadlineExceeded) {
+				return "", requestError
+			}
 			return "", errors.New(errorOpenAIRequest)
 		}
 	}
@@ -258,6 +267,9 @@ func fetchResponseByID(contextToUse context.Context, openAIKey string, responseI
 
 	_, responseBytes, _, requestError := performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIPollError)
 	if requestError != nil {
+		if errors.Is(requestError, context.DeadlineExceeded) {
+			return "", false, requestError
+		}
 		return "", false, errors.New(errorOpenAIRequest)
 	}
 

@@ -164,6 +164,8 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 			if outcome.requestError != nil {
 				if errors.Is(outcome.requestError, ErrUnknownModel) {
 					ginContext.String(http.StatusBadRequest, outcome.requestError.Error())
+				} else if errors.Is(outcome.requestError, context.DeadlineExceeded) {
+					ginContext.String(http.StatusGatewayTimeout, errorRequestTimedOut)
 				} else {
 					ginContext.String(http.StatusBadGateway, outcome.requestError.Error())
 				}
