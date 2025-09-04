@@ -14,8 +14,10 @@ import (
 )
 
 const (
-	serviceSecretValue           = "sekret"
-	openAIKeyValue               = "sk-test"
+	serviceSecretValue = "sekret"
+	openAIKeyValue     = "sk-test"
+	// logLevelDebug is the logging level used in integration tests.
+	logLevelDebug                = "debug"
 	mockModelsURL                = "https://mock.local/v1/models"
 	mockResponsesURL             = "https://mock.local/v1/responses"
 	modelsListBody               = `{"data":[{"id":"gpt-4.1"}]}`
@@ -55,7 +57,7 @@ func TestIntegrationResponseDeliveredAfterDelay(testingInstance *testing.T) {
 	for _, testCase := range testCases {
 		testingInstance.Run(testCase.name, func(subTest *testing.T) {
 			configureProxy(subTest, makeSlowHTTPClient(subTest))
-			router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: "debug", WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: requestTimeoutSecondsDefault}, newLogger(subTest))
+			router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: logLevelDebug, WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: requestTimeoutSecondsDefault}, newLogger(subTest))
 			if buildError != nil {
 				subTest.Fatalf("BuildRouter failed: %v", buildError)
 			}

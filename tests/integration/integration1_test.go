@@ -56,7 +56,7 @@ func newIntegrationServer(testingInstance *testing.T, openAIServer *httptest.Ser
 	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: integrationServiceSecret,
 		OpenAIKey:     integrationOpenAIKey,
-		LogLevel:      "debug",
+		LogLevel:      logLevelDebug,
 		WorkerCount:   1,
 		QueueSize:     4,
 	}, logger.Sugar())
@@ -81,7 +81,7 @@ func newIntegrationServerWithTimeout(testingInstance *testing.T, openAIServer *h
 	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret:         integrationServiceSecret,
 		OpenAIKey:             integrationOpenAIKey,
-		LogLevel:              "debug",
+		LogLevel:              logLevelDebug,
 		WorkerCount:           1,
 		QueueSize:             4,
 		RequestTimeoutSeconds: requestTimeoutSeconds,

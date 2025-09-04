@@ -18,7 +18,7 @@ func TestRequestWithoutPromptReturnsMissingPromptError(testingInstance *testing.
 	gin.SetMode(gin.TestMode)
 	client, _ := makeHTTPClient(testingInstance, false)
 	configureProxy(testingInstance, client)
-	router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: "debug", WorkerCount: 1, QueueSize: 8}, newLogger(testingInstance))
+	router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: logLevelDebug, WorkerCount: 1, QueueSize: 8}, newLogger(testingInstance))
 	if buildError != nil {
 		testingInstance.Fatalf("BuildRouter failed: %v", buildError)
 	}

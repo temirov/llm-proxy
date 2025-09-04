@@ -45,7 +45,7 @@ func TestIntegrationWebSearchUnsupportedModelReturnsBadRequest(testingInstance *
 		testingInstance.Run(testCase.name, func(subTest *testing.T) {
 			client := makeWebSearchRejectingHTTPClient(subTest)
 			configureProxy(subTest, client)
-			router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: "debug", WorkerCount: 1, QueueSize: 8}, newLogger(subTest))
+			router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: logLevelDebug, WorkerCount: 1, QueueSize: 8}, newLogger(subTest))
 			if buildError != nil {
 				subTest.Fatalf("BuildRouter failed: %v", buildError)
 			}

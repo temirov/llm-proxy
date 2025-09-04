@@ -82,7 +82,7 @@ func newAdaptiveRouter(testingInstance *testing.T, mode string) *gin.Engine {
 	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: serviceSecretValue,
 		OpenAIKey:     openAIKeyValue,
-		LogLevel:      "debug",
+		LogLevel:      logLevelDebug,
 		WorkerCount:   1,
 		QueueSize:     8,
 	}, logger.Sugar())
