@@ -3,6 +3,7 @@ package proxy
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -78,7 +79,7 @@ func BuildRouter(config Configuration, structuredLogger *zap.SugaredLogger) (*gi
 	}
 
 	router.Use(gin.Recovery(), secretMiddleware(config.ServiceSecret, structuredLogger))
-	router.GET("/", chatHandler(taskQueue, config.SystemPrompt, validator))
+	router.GET("/", chatHandler(taskQueue, config.SystemPrompt, validator, structuredLogger))
 	return router, nil
 }
 
@@ -90,7 +91,7 @@ func Serve(config Configuration, structuredLogger *zap.SugaredLogger) error {
 	return router.Run(fmt.Sprintf(":%d", config.Port))
 }
 
-func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validator *modelValidator) gin.HandlerFunc {
+func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validator *modelValidator, structuredLogger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(ginContext *gin.Context) {
 		userPrompt := ginContext.Query(queryParameterPrompt)
 		if userPrompt == "" {
@@ -112,8 +113,20 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 			return
 		}
 
-		webSearchFlag := strings.TrimSpace(strings.ToLower(ginContext.Query(queryParameterWebSearch)))
-		webSearchEnabled := webSearchFlag == "1" || webSearchFlag == "true" || webSearchFlag == "yes"
+		webSearchQuery := strings.TrimSpace(ginContext.Query(queryParameterWebSearch))
+		webSearchEnabled := false
+		if webSearchQuery != "" {
+			parsedWebSearch, parseError := strconv.ParseBool(webSearchQuery)
+			if parseError != nil {
+				structuredLogger.Warnw(
+					logEventParseWebSearchParameterFailed,
+					logFieldValue, webSearchQuery,
+					logFieldError, parseError,
+				)
+			} else {
+				webSearchEnabled = parsedWebSearch
+			}
+		}
 		if webSearchEnabled && mustRejectWebSearchAtIngress(modelIdentifier) {
 			ginContext.String(http.StatusBadRequest, errorWebSearchUnsupportedByModel)
 			return

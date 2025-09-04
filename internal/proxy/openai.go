@@ -35,25 +35,25 @@ type responsesAPIShim struct {
 	} `json:"choices"`
 }
 
-// openAIRequest sends a prompt to the upstream API and returns the produced text.
+// openAIRequest sends a prompt to the OpenAI responses API and returns the resulting text.
+// It retries without unsupported parameters and polls for completion when needed.
 func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, systemPrompt string, webSearchEnabled bool, structuredLogger *zap.SugaredLogger) (string, error) {
 	messageList := []map[string]string{
 		{keyRole: keySystem, keyContent: systemPrompt},
 		{keyRole: keyUser, keyContent: userPrompt},
 	}
 
-	// Use model specification to decide what we are allowed to send.
-	spec := resolveModelSpecification(modelIdentifier)
+	modelSpecification := resolveModelSpecification(modelIdentifier)
 
 	requestPayload := map[string]any{
 		keyModel:           modelIdentifier,
 		keyInput:           messageList,
-		keyMaxOutputTokens: maxOutputTokens, // ← configurable
+		keyMaxOutputTokens: maxOutputTokens,
 	}
-	if spec.IncludeTemperature {
+	if modelSpecification.IncludeTemperature {
 		requestPayload[keyTemperature] = 0.7
 	}
-	if webSearchEnabled && spec.IncludeWebSearchTools {
+	if webSearchEnabled && modelSpecification.IncludeWebSearchTools {
 		requestPayload[keyTools] = []any{map[string]any{keyType: toolTypeWebSearch}}
 		requestPayload[keyToolChoice] = keyAuto
 	}
@@ -78,7 +78,6 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return "", errors.New(errorOpenAIRequest)
 	}
 
-	// If upstream rejects 'temperature', retry once without it.
 	if statusCode >= http.StatusBadRequest &&
 		strings.Contains(string(responseBytes), "'temperature'") &&
 		requestPayload[keyTemperature] != nil {
@@ -92,7 +91,6 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		}
 	}
 
-	// If upstream rejects 'tools', retry once without them.
 	if statusCode >= http.StatusBadRequest &&
 		strings.Contains(string(responseBytes), "'tools'") &&
 		requestPayload[keyTools] != nil {
@@ -108,7 +106,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	}
 
 	var decodedObject map[string]any
-	if err := json.Unmarshal(responseBytes, &decodedObject); err != nil {
+	if unmarshalError := json.Unmarshal(responseBytes, &decodedObject); unmarshalError != nil {
 		decodedObject = nil
 	}
 
@@ -158,16 +156,17 @@ func pollResponseUntilDone(openAIKey string, responseIdentifier string, structur
 		if time.Now().After(deadlineInstant) {
 			return "", ErrUpstreamIncomplete
 		}
+
 		pollContext, cancelPoll := context.WithDeadline(context.Background(), deadlineInstant)
 		textCandidate, isDone, fetchError := fetchResponseByID(pollContext, openAIKey, responseIdentifier, structuredLogger)
 		cancelPoll()
 		if fetchError != nil {
 			return "", fetchError
 		}
-		if isDone && !utils.IsBlank(textCandidate) {
+		if responseComplete && !utils.IsBlank(textCandidate) {
 			return textCandidate, nil
 		}
-		if isDone {
+		if responseComplete {
 			return "", ErrUpstreamIncomplete
 		}
 		time.Sleep(pollInterval)
@@ -188,13 +187,13 @@ func fetchResponseByID(pollContext context.Context, openAIKey string, responseId
 	}
 
 	var decodedObject map[string]any
-	if err := json.Unmarshal(responseBytes, &decodedObject); err != nil {
+	if unmarshalError := json.Unmarshal(responseBytes, &decodedObject); unmarshalError != nil {
 		decodedObject = nil
 	}
-	statusValue := strings.ToLower(getString(decodedObject, jsonFieldStatus))
+	responseStatus := strings.ToLower(getString(decodedObject, jsonFieldStatus))
 	outputText := extractTextFromAny(decodedObject, responseBytes)
 
-	switch statusValue {
+	switch responseStatus {
 	case statusCompleted, statusSucceeded, statusDone:
 		return outputText, true, nil
 	case statusCancelled, statusFailed, statusErrored:
@@ -204,21 +203,23 @@ func fetchResponseByID(pollContext context.Context, openAIKey string, responseId
 	}
 }
 
+// getString returns a string value from the provided container for the specified field.
 func getString(container map[string]any, field string) string {
 	if container == nil {
 		return ""
 	}
 	if rawValue, present := container[field]; present {
-		if castValue, ok := rawValue.(string); ok {
+		if castValue, isString := rawValue.(string); isString {
 			return castValue
 		}
 	}
 	return ""
 }
 
+// extractTextFromAny obtains text content from various possible response shapes.
 func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 	if container != nil {
-		if direct, ok := container[jsonFieldOutputText].(string); ok && !utils.IsBlank(direct) {
+		if direct, isString := container[jsonFieldOutputText].(string); isString && !utils.IsBlank(direct) {
 			return direct
 		}
 	}
@@ -233,7 +234,7 @@ func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 	var newShape struct {
 		Output []outputItem `json:"output"`
 	}
-	if err := json.Unmarshal(rawPayload, &newShape); err == nil && len(newShape.Output) > 0 {
+	if unmarshalError := json.Unmarshal(rawPayload, &newShape); unmarshalError == nil && len(newShape.Output) > 0 {
 		var textBuilder strings.Builder
 		for _, outputEntry := range newShape.Output {
 			for _, contentEntry := range outputEntry.Content {
@@ -255,7 +256,7 @@ func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 			Content []contentPart `json:"content"`
 		} `json:"response"`
 	}
-	if err := json.Unmarshal(rawPayload, &altShape); err == nil && len(altShape.Response) > 0 {
+	if unmarshalError := json.Unmarshal(rawPayload, &altShape); unmarshalError == nil && len(altShape.Response) > 0 {
 		var textBuilder strings.Builder
 		for _, responseEntry := range altShape.Response {
 			for _, contentEntry := range responseEntry.Content {
@@ -273,7 +274,7 @@ func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 	}
 
 	var legacy responsesAPIShim
-	if err := json.Unmarshal(rawPayload, &legacy); err == nil && len(legacy.Choices) > 0 {
+	if unmarshalError := json.Unmarshal(rawPayload, &legacy); unmarshalError == nil && len(legacy.Choices) > 0 {
 		return legacy.Choices[0].Message.Content
 	}
 	return ""

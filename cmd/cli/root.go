@@ -13,6 +13,47 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	envPrefix = "gpt"
+
+	keyOpenAIAPIKey               = "openai_api_key"
+	keyServiceSecret              = "service_secret"
+	keyLogLevel                   = "log_level"
+	keySystemPrompt               = "system_prompt"
+	keyWorkers                    = "workers"
+	keyQueueSize                  = "queue_size"
+	keyPort                       = "port"
+	keyRequestTimeoutSeconds      = "request_timeout_seconds"
+	keyUpstreamPollTimeoutSeconds = "upstream_poll_timeout_seconds"
+	keyMaxOutputTokens            = "max_output_tokens"
+
+	flagOpenAIAPIKey        = keyOpenAIAPIKey
+	flagServiceSecret       = keyServiceSecret
+	flagLogLevel            = keyLogLevel
+	flagSystemPrompt        = keySystemPrompt
+	flagWorkers             = keyWorkers
+	flagQueueSize           = keyQueueSize
+	flagPort                = keyPort
+	flagRequestTimeout      = "request_timeout"
+	flagUpstreamPollTimeout = "upstream_poll_timeout"
+	flagMaxOutputTokens     = keyMaxOutputTokens
+
+	envOpenAIAPIKey               = "OPENAI_API_KEY"
+	envServiceSecret              = "SERVICE_SECRET"
+	envLogLevel                   = "LOG_LEVEL"
+	envSystemPrompt               = "SYSTEM_PROMPT"
+	envWorkers                    = "GPT_WORKERS"
+	envQueueSize                  = "GPT_QUEUE_SIZE"
+	envPort                       = "HTTP_PORT"
+	envRequestTimeoutSeconds      = "GPT_REQUEST_TIMEOUT_SECONDS"
+	envUpstreamPollTimeoutSeconds = "GPT_UPSTREAM_POLL_TIMEOUT_SECONDS"
+	envMaxOutputTokens            = "GPT_MAX_OUTPUT_TOKENS"
+
+	quoteCharacters = "\"'"
+	logLevelDebug   = "debug"
+	logLevelInfo    = "info"
+)
+
 var config proxy.Configuration
 
 // Execute runs the command-line interface.
@@ -31,72 +72,72 @@ var rootCmd = &cobra.Command{
 	Example: `llm-proxy --service_secret=mysecret --openai_api_key=sk-xxxxx --log_level=debug
 SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Pull from env if flags were omitted
-		if config.ServiceSecret == "" {
-			config.ServiceSecret = strings.TrimSpace(strings.Trim(viper.GetString("service_secret"), `"'`))
+		if !cmd.Flags().Changed(flagServiceSecret) {
+			config.ServiceSecret = strings.TrimSpace(strings.Trim(viper.GetString(keyServiceSecret), quoteCharacters))
 		}
-		if config.OpenAIKey == "" {
-			config.OpenAIKey = strings.TrimSpace(strings.Trim(viper.GetString("openai_api_key"), `"'`))
+		if !cmd.Flags().Changed(flagOpenAIAPIKey) {
+			config.OpenAIKey = strings.TrimSpace(strings.Trim(viper.GetString(keyOpenAIAPIKey), quoteCharacters))
+		}
+		if !cmd.Flags().Changed(flagPort) {
+			config.Port = viper.GetInt(keyPort)
 		}
 		if config.Port == 0 {
-			config.Port = viper.GetInt("port")
-			if config.Port == 0 {
-				config.Port = proxy.DefaultPort
-			}
+			config.Port = proxy.DefaultPort
+		}
+		if !cmd.Flags().Changed(flagLogLevel) {
+			config.LogLevel = viper.GetString(keyLogLevel)
 		}
 		if config.LogLevel == "" {
-			config.LogLevel = viper.GetString("log_level")
+			config.LogLevel = logLevelInfo
 		}
-		if config.SystemPrompt == "" {
-			config.SystemPrompt = viper.GetString("system_prompt")
+		if !cmd.Flags().Changed(flagSystemPrompt) {
+			config.SystemPrompt = viper.GetString(keySystemPrompt)
+		}
+		if !cmd.Flags().Changed(flagWorkers) {
+			config.WorkerCount = viper.GetInt(keyWorkers)
 		}
 		if config.WorkerCount == 0 {
-			config.WorkerCount = viper.GetInt("workers")
-			if config.WorkerCount == 0 {
-				config.WorkerCount = proxy.DefaultWorkers
-			}
+			config.WorkerCount = proxy.DefaultWorkers
+		}
+		if !cmd.Flags().Changed(flagQueueSize) {
+			config.QueueSize = viper.GetInt(keyQueueSize)
 		}
 		if config.QueueSize == 0 {
-			config.QueueSize = viper.GetInt("queue_size")
-			if config.QueueSize == 0 {
-				config.QueueSize = proxy.DefaultQueueSize
-			}
+			config.QueueSize = proxy.DefaultQueueSize
+		}
+		if !cmd.Flags().Changed(flagRequestTimeout) {
+			config.RequestTimeoutSeconds = viper.GetInt(keyRequestTimeoutSeconds)
 		}
 		if config.RequestTimeoutSeconds == 0 {
-			config.RequestTimeoutSeconds = viper.GetInt("request_timeout_seconds")
-			if config.RequestTimeoutSeconds == 0 {
-				config.RequestTimeoutSeconds = proxy.DefaultRequestTimeoutSeconds
-			}
+			config.RequestTimeoutSeconds = proxy.DefaultRequestTimeoutSeconds
+		}
+		if !cmd.Flags().Changed(flagUpstreamPollTimeout) {
+			config.UpstreamPollTimeoutSeconds = viper.GetInt(keyUpstreamPollTimeoutSeconds)
 		}
 		if config.UpstreamPollTimeoutSeconds == 0 {
-			config.UpstreamPollTimeoutSeconds = viper.GetInt("upstream_poll_timeout_seconds")
-			if config.UpstreamPollTimeoutSeconds == 0 {
-				config.UpstreamPollTimeoutSeconds = proxy.DefaultUpstreamPollTimeoutSeconds
-			}
+			config.UpstreamPollTimeoutSeconds = proxy.DefaultUpstreamPollTimeoutSeconds
+		}
+		if !cmd.Flags().Changed(flagMaxOutputTokens) {
+			config.MaxOutputTokens = viper.GetInt(keyMaxOutputTokens)
 		}
 		if config.MaxOutputTokens == 0 {
-			config.MaxOutputTokens = viper.GetInt("max_output_tokens")
-			if config.MaxOutputTokens == 0 {
-				config.MaxOutputTokens = proxy.DefaultMaxOutputTokens
-			}
+			config.MaxOutputTokens = proxy.DefaultMaxOutputTokens
 		}
 
 		var logger *zap.Logger
-		var err error
+		var loggerError error
 		switch strings.ToLower(config.LogLevel) {
-		case "debug":
-			logger, err = zap.NewDevelopment()
+		case logLevelDebug:
+			logger, loggerError = zap.NewDevelopment()
 		default:
-			logger, err = zap.NewProduction()
+			logger, loggerError = zap.NewProduction()
 		}
-		if err != nil {
-			// If logging cannot initialize, there's no sensible way to continue.
-			return err
+		if loggerError != nil {
+			return loggerError
 		}
 		defer func() { _ = logger.Sync() }()
 		sugar := logger.Sugar()
 
-		// Fail fast if secret/key are missing
 		if strings.TrimSpace(config.ServiceSecret) == "" {
 			sugar.Error("SERVICE_SECRET is empty; refusing to start")
 			return apperrors.ErrMissingServiceSecret
@@ -118,32 +159,35 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 // bindOrDie wraps viper bindings and returns a combined error if any bind fails.
 func bindOrDie() error {
 	var errs []string
-	if err := viper.BindEnv("openai_api_key", "OPENAI_API_KEY"); err != nil {
-		errs = append(errs, "openai_api_key:"+err.Error())
+	if err := viper.BindEnv(keyOpenAIAPIKey, envOpenAIAPIKey); err != nil {
+		errs = append(errs, keyOpenAIAPIKey+":"+err.Error())
 	}
-	if err := viper.BindEnv("service_secret", "SERVICE_SECRET"); err != nil {
-		errs = append(errs, "service_secret:"+err.Error())
+	if err := viper.BindEnv(keyServiceSecret, envServiceSecret); err != nil {
+		errs = append(errs, keyServiceSecret+":"+err.Error())
 	}
-	if err := viper.BindEnv("log_level", "LOG_LEVEL"); err != nil {
-		errs = append(errs, "log_level:"+err.Error())
+	if err := viper.BindEnv(keyLogLevel, envLogLevel); err != nil {
+		errs = append(errs, keyLogLevel+":"+err.Error())
 	}
-	if err := viper.BindEnv("system_prompt", "SYSTEM_PROMPT"); err != nil {
-		errs = append(errs, "system_prompt:"+err.Error())
+	if err := viper.BindEnv(keySystemPrompt, envSystemPrompt); err != nil {
+		errs = append(errs, keySystemPrompt+":"+err.Error())
 	}
-	if err := viper.BindEnv("workers", "GPT_WORKERS"); err != nil {
-		errs = append(errs, "workers:"+err.Error())
+	if err := viper.BindEnv(keyWorkers, envWorkers); err != nil {
+		errs = append(errs, keyWorkers+":"+err.Error())
 	}
-	if err := viper.BindEnv("queue_size", "GPT_QUEUE_SIZE"); err != nil {
-		errs = append(errs, "queue_size:"+err.Error())
+	if err := viper.BindEnv(keyQueueSize, envQueueSize); err != nil {
+		errs = append(errs, keyQueueSize+":"+err.Error())
 	}
-	if err := viper.BindEnv("port", "HTTP_PORT"); err != nil {
-		errs = append(errs, "port:"+err.Error())
+	if err := viper.BindEnv(keyPort, envPort); err != nil {
+		errs = append(errs, keyPort+":"+err.Error())
 	}
-	if err := viper.BindEnv("request_timeout_seconds", "GPT_REQUEST_TIMEOUT_SECONDS"); err != nil {
-		errs = append(errs, "request_timeout_seconds:"+err.Error())
+	if err := viper.BindEnv(keyRequestTimeoutSeconds, envRequestTimeoutSeconds); err != nil {
+		errs = append(errs, keyRequestTimeoutSeconds+":"+err.Error())
 	}
-	if err := viper.BindEnv("upstream_poll_timeout_seconds", "GPT_UPSTREAM_POLL_TIMEOUT_SECONDS"); err != nil {
-		errs = append(errs, "upstream_poll_timeout_seconds:"+err.Error())
+	if err := viper.BindEnv(keyUpstreamPollTimeoutSeconds, envUpstreamPollTimeoutSeconds); err != nil {
+		errs = append(errs, keyUpstreamPollTimeoutSeconds+":"+err.Error())
+	}
+	if err := viper.BindEnv(keyMaxOutputTokens, envMaxOutputTokens); err != nil {
+		errs = append(errs, keyMaxOutputTokens+":"+err.Error())
 	}
 	if len(errs) > 0 {
 		return errors.New(strings.Join(errs, "; "))
@@ -152,7 +196,7 @@ func bindOrDie() error {
 }
 
 func init() {
-	viper.SetEnvPrefix("gpt")
+	viper.SetEnvPrefix(envPrefix)
 	viper.AutomaticEnv()
 
 	if err := bindOrDie(); err != nil {
@@ -161,57 +205,63 @@ func init() {
 
 	rootCmd.Flags().StringVar(
 		&config.ServiceSecret,
-		"service_secret",
+		flagServiceSecret,
 		"",
-		"shared secret for requests (env: SERVICE_SECRET)",
+		"shared secret for requests (env: "+envServiceSecret+")",
 	)
 	rootCmd.Flags().StringVar(
 		&config.OpenAIKey,
-		"openai_api_key",
+		flagOpenAIAPIKey,
 		"",
-		"OpenAI API key (env: OPENAI_API_KEY)",
+		"OpenAI API key (env: "+envOpenAIAPIKey+")",
 	)
 	rootCmd.Flags().IntVar(
 		&config.Port,
-		"port",
-		proxy.DefaultPort,
-		"TCP port to listen on (env: HTTP_PORT)",
+		flagPort,
+		0,
+		"TCP port to listen on (env: "+envPort+")",
 	)
 	rootCmd.Flags().StringVar(
 		&config.LogLevel,
-		"log_level",
-		"info",
-		"logging level: debug or info (env: LOG_LEVEL)",
+		flagLogLevel,
+		"",
+		"logging level: debug or info (env: "+envLogLevel+")",
 	)
 	rootCmd.Flags().StringVar(
 		&config.SystemPrompt,
-		"system_prompt",
+		flagSystemPrompt,
 		"",
-		"system prompt sent to the model (env: SYSTEM_PROMPT)",
+		"system prompt sent to the model (env: "+envSystemPrompt+")",
 	)
 	rootCmd.Flags().IntVar(
 		&config.WorkerCount,
-		"workers",
-		proxy.DefaultWorkers,
-		"number of worker goroutines (env: GPT_WORKERS)",
+		flagWorkers,
+		0,
+		"number of worker goroutines (env: "+envWorkers+")",
 	)
 	rootCmd.Flags().IntVar(
 		&config.QueueSize,
-		"queue_size",
-		proxy.DefaultQueueSize,
-		"request queue size (env: GPT_QUEUE_SIZE)",
+		flagQueueSize,
+		0,
+		"request queue size (env: "+envQueueSize+")",
 	)
 	rootCmd.Flags().IntVar(
 		&config.RequestTimeoutSeconds,
-		"request_timeout",
-		proxy.DefaultRequestTimeoutSeconds,
-		"overall request timeout in seconds (env: GPT_REQUEST_TIMEOUT_SECONDS)",
+		flagRequestTimeout,
+		0,
+		"overall request timeout in seconds (env: "+envRequestTimeoutSeconds+")",
 	)
 	rootCmd.Flags().IntVar(
 		&config.UpstreamPollTimeoutSeconds,
-		"upstream_poll_timeout",
-		proxy.DefaultUpstreamPollTimeoutSeconds,
-		"upstream poll timeout in seconds for incomplete responses (env: GPT_UPSTREAM_POLL_TIMEOUT_SECONDS)",
+		flagUpstreamPollTimeout,
+		0,
+		"upstream poll timeout in seconds for incomplete responses (env: "+envUpstreamPollTimeoutSeconds+")",
+	)
+	rootCmd.Flags().IntVar(
+		&config.MaxOutputTokens,
+		flagMaxOutputTokens,
+		0,
+		"maximum output tokens (env: "+envMaxOutputTokens+")",
 	)
 
 	if err := viper.BindPFlags(rootCmd.Flags()); err != nil {

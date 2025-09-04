@@ -10,8 +10,8 @@ func IsBlank(value string) bool {
 // HasAnyPrefix reports whether value starts with any of the given prefixes (case-insensitive).
 func HasAnyPrefix(value string, prefixes ...string) bool {
 	lower := strings.ToLower(value)
-	for _, p := range prefixes {
-		if strings.HasPrefix(lower, strings.ToLower(p)) {
+	for _, candidatePrefix := range prefixes {
+		if strings.HasPrefix(lower, strings.ToLower(candidatePrefix)) {
 			return true
 		}
 	}
