@@ -36,6 +36,7 @@ const (
 	errorOpenAIFailedStatus          = "OpenAI API error (failed status)"
 	errorOpenAIModelValidation       = "OpenAI model validation error"
 	errorWebSearchUnsupportedByModel = "web_search is not supported by the selected model"
+	errorResponseFormat              = "response formatting error"
 
 	toolTypeWebSearch = "web_search"
 
@@ -55,6 +56,7 @@ const (
 	jsonFieldID         = "id"
 	jsonFieldStatus     = "status"
 	jsonFieldOutputText = "output_text"
+	jsonFieldResponse   = "response"
 
 	statusCompleted = "completed"
 	statusSucceeded = "succeeded"
@@ -83,6 +85,7 @@ const (
 	logEventRequestReceived               = "request received"
 	logEventResponseSent                  = "response sent"
 	logEventMarshalRequestPayload         = "marshal request payload failed"
+	logEventMarshalResponsePayload        = "marshal response payload failed"
 	logEventBuildHTTPRequest              = "build HTTP request failed"
 	logEventReadResponseBodyFailed        = "read response body failed"
 	logEventRetryingWithoutParam          = "retrying without parameter"

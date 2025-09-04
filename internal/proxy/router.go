@@ -152,7 +152,7 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 				return
 			}
 			mime := preferredMime(ginContext)
-			formattedBody, contentType := formatResponse(outcome.text, mime, userPrompt)
+			formattedBody, contentType := formatResponse(outcome.text, mime, userPrompt, structuredLogger)
 			ginContext.Data(http.StatusOK, contentType, []byte(formattedBody))
 		case <-time.After(requestTimeout):
 			ginContext.String(http.StatusGatewayTimeout, errorRequestTimedOut)
