@@ -12,9 +12,9 @@ import (
 	"go.uber.org/zap"
 )
 
-func TestIntegration_ResponseDelivered(t *testing.T) {
-	// Fake upstream that serves /v1/models and /v1/responses.
-	openAISrv := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
+// TestIntegration_ResponseDelivered verifies that the integration endpoint returns the upstream response text.
+func TestIntegration_ResponseDelivered(testingInstance *testing.T) {
+	openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch {
 		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
 			responseWriter.Header().Set("Content-Type", "application/json")
@@ -29,16 +29,14 @@ func TestIntegration_ResponseDelivered(t *testing.T) {
 			return
 		}
 	}))
-	defer openAISrv.Close()
+	defer openAIServer.Close()
 
-	// Inject URLs + client.
-	proxy.SetModelsURL(openAISrv.URL + "/v1/models")
-	proxy.SetResponsesURL(openAISrv.URL + "/v1/responses")
-	proxy.HTTPClient = openAISrv.Client()
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	proxy.SetModelsURL(openAIServer.URL + "/v1/models")
+	proxy.SetResponsesURL(openAIServer.URL + "/v1/responses")
+	proxy.HTTPClient = openAIServer.Client()
+	testingInstance.Cleanup(proxy.ResetModelsURL)
+	testingInstance.Cleanup(proxy.ResetResponsesURL)
 
-	// Build app router and serve it.
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
 	router, err := proxy.BuildRouter(proxy.Configuration{
@@ -49,32 +47,33 @@ func TestIntegration_ResponseDelivered(t *testing.T) {
 		QueueSize:     4,
 	}, logger.Sugar())
 	if err != nil {
-		t.Fatalf("BuildRouter error: %v", err)
+		testingInstance.Fatalf("BuildRouter error: %v", err)
 	}
 
-	appSrv := httptest.NewServer(router)
-	defer appSrv.Close()
+	applicationServer := httptest.NewServer(router)
+	defer applicationServer.Close()
 
-	resp, err := http.Get(appSrv.URL + "/?prompt=ping&key=sekret")
-	if err != nil {
-		t.Fatalf("request error: %v", err)
+	httpResponse, requestError := http.Get(applicationServer.URL + "/?prompt=ping&key=sekret")
+	if requestError != nil {
+		testingInstance.Fatalf("request error: %v", requestError)
 	}
-	defer resp.Body.Close()
+	defer httpResponse.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status=%d body=%s", resp.StatusCode, string(b))
+	if httpResponse.StatusCode != http.StatusOK {
+		responseBody, _ := io.ReadAll(httpResponse.Body)
+		testingInstance.Fatalf("status=%d body=%s", httpResponse.StatusCode, string(responseBody))
 	}
-	body, _ := io.ReadAll(resp.Body)
-	if got := strings.TrimSpace(string(body)); got != "INTEGRATION_OK" {
-		t.Fatalf("body=%q; want INTEGRATION_OK", got)
+	responseBytes, _ := io.ReadAll(httpResponse.Body)
+	if got := strings.TrimSpace(string(responseBytes)); got != "INTEGRATION_OK" {
+		testingInstance.Fatalf("body=%q; want INTEGRATION_OK", got)
 	}
 }
 
-func TestIntegration_ResponseDelivered_WithWebSearch(t *testing.T) {
+// TestIntegration_ResponseDelivered_WithWebSearch verifies delivery of responses when web search is requested.
+func TestIntegration_ResponseDelivered_WithWebSearch(testingInstance *testing.T) {
 	var captured any
 
-	openAISrv := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
+	openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch {
 		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
 			responseWriter.Header().Set("Content-Type", "application/json")
@@ -91,13 +90,13 @@ func TestIntegration_ResponseDelivered_WithWebSearch(t *testing.T) {
 			return
 		}
 	}))
-	defer openAISrv.Close()
+	defer openAIServer.Close()
 
-	proxy.SetModelsURL(openAISrv.URL + "/v1/models")
-	proxy.SetResponsesURL(openAISrv.URL + "/v1/responses")
-	proxy.HTTPClient = openAISrv.Client()
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	proxy.SetModelsURL(openAIServer.URL + "/v1/models")
+	proxy.SetResponsesURL(openAIServer.URL + "/v1/responses")
+	proxy.HTTPClient = openAIServer.Client()
+	testingInstance.Cleanup(proxy.ResetModelsURL)
+	testingInstance.Cleanup(proxy.ResetResponsesURL)
 
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
@@ -109,35 +108,35 @@ func TestIntegration_ResponseDelivered_WithWebSearch(t *testing.T) {
 		QueueSize:     4,
 	}, logger.Sugar())
 	if err != nil {
-		t.Fatalf("BuildRouter error: %v", err)
+		testingInstance.Fatalf("BuildRouter error: %v", err)
 	}
 
-	appSrv := httptest.NewServer(router)
-	defer appSrv.Close()
+	applicationServer := httptest.NewServer(router)
+	defer applicationServer.Close()
 
-	resp, err := http.Get(appSrv.URL + "/?prompt=ping&key=sekret&web_search=1")
-	if err != nil {
-		t.Fatalf("request error: %v", err)
+	httpResponse, requestError := http.Get(applicationServer.URL + "/?prompt=ping&key=sekret&web_search=1")
+	if requestError != nil {
+		testingInstance.Fatalf("request error: %v", requestError)
 	}
-	defer resp.Body.Close()
+	defer httpResponse.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status=%d body=%s", resp.StatusCode, string(b))
+	if httpResponse.StatusCode != http.StatusOK {
+		responseBody, _ := io.ReadAll(httpResponse.Body)
+		testingInstance.Fatalf("status=%d body=%s", httpResponse.StatusCode, string(responseBody))
 	}
-	body, _ := io.ReadAll(resp.Body)
-	if got := strings.TrimSpace(string(body)); got != "SEARCH_OK" {
-		t.Fatalf("body=%q; want SEARCH_OK", got)
+	responseBytes, _ := io.ReadAll(httpResponse.Body)
+	if got := strings.TrimSpace(string(responseBytes)); got != "SEARCH_OK" {
+		testingInstance.Fatalf("body=%q; want SEARCH_OK", got)
 	}
 
 	// Assert that the tool was sent.
 	m, _ := captured.(map[string]any)
 	tools, ok := m["tools"].([]any)
 	if !ok || len(tools) == 0 {
-		t.Fatalf("tools missing when web_search=1")
+		testingInstance.Fatalf("tools missing when web_search=1")
 	}
 	first, _ := tools[0].(map[string]any)
 	if first["type"] != "web_search" {
-		t.Fatalf("tool type=%v; want web_search", first["type"])
+		testingInstance.Fatalf("tool type=%v; want web_search", first["type"])
 	}
 }

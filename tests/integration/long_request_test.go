@@ -32,7 +32,7 @@ const (
 func makeSlowHTTPClient(testingInstance *testing.T) *http.Client {
 	testingInstance.Helper()
 	return &http.Client{
-		Transport: rt(func(request *http.Request) (*http.Response, error) {
+		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 			switch request.URL.String() {
 			case proxy.ModelsURL():
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(modelsListBody)), Header: make(http.Header)}, nil
