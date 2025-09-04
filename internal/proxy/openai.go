@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/temirov/llm-proxy/internal/utils"
 	"go.uber.org/zap"
 )
@@ -33,6 +35,7 @@ type responsesAPIShim struct {
 	} `json:"choices"`
 }
 
+// openAIRequest sends a prompt to the upstream API and returns the produced text.
 func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, systemPrompt string, webSearchEnabled bool, structuredLogger *zap.SugaredLogger) (string, error) {
 	messageList := []map[string]string{
 		{keyRole: keySystem, keyContent: systemPrompt},
@@ -61,7 +64,10 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return "", errors.New(errorRequestBuild)
 	}
 
-	httpRequest, buildError := buildAuthorizedJSONRequest(http.MethodPost, ResponsesURL, openAIKey, bytes.NewReader(payloadBytes))
+	requestContextWithTimeout, cancelRequest := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancelRequest()
+
+	httpRequest, buildError := buildAuthorizedJSONRequest(requestContextWithTimeout, http.MethodPost, ResponsesURL, openAIKey, bytes.NewReader(payloadBytes))
 	if buildError != nil {
 		structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildError)
 		return "", errors.New(errorRequestBuild)
@@ -79,8 +85,8 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		structuredLogger.Infow(logEventRetryingWithoutParam, "parameter", keyTemperature)
 		delete(requestPayload, keyTemperature)
 		body, _ := json.Marshal(requestPayload)
-		retryReq, _ := buildAuthorizedJSONRequest(http.MethodPost, ResponsesURL, openAIKey, bytes.NewReader(body))
-		statusCode, responseBytes, latencyMillis, transportError = performJSONRequest(retryReq, structuredLogger, logEventOpenAIRequestError)
+		retryRequest, _ := buildAuthorizedJSONRequest(requestContextWithTimeout, http.MethodPost, ResponsesURL, openAIKey, bytes.NewReader(body))
+		statusCode, responseBytes, latencyMillis, transportError = performJSONRequest(retryRequest, structuredLogger, logEventOpenAIRequestError)
 		if transportError != nil {
 			return "", errors.New(errorOpenAIRequest)
 		}
@@ -94,8 +100,8 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		delete(requestPayload, keyTools)
 		delete(requestPayload, keyToolChoice)
 		body, _ := json.Marshal(requestPayload)
-		retryReq, _ := buildAuthorizedJSONRequest(http.MethodPost, ResponsesURL, openAIKey, bytes.NewReader(body))
-		statusCode, responseBytes, latencyMillis, transportError = performJSONRequest(retryReq, structuredLogger, logEventOpenAIRequestError)
+		retryRequest, _ := buildAuthorizedJSONRequest(requestContextWithTimeout, http.MethodPost, ResponsesURL, openAIKey, bytes.NewReader(body))
+		statusCode, responseBytes, latencyMillis, transportError = performJSONRequest(retryRequest, structuredLogger, logEventOpenAIRequestError)
 		if transportError != nil {
 			return "", errors.New(errorOpenAIRequest)
 		}
@@ -143,15 +149,18 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	return outputText, nil
 }
 
+// pollResponseUntilDone repeatedly fetches a response until completion or timeout.
 func pollResponseUntilDone(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, error) {
-	deadlineInstant := time.Now().Add(upstreamPollTimeout) // ← configurable
+	deadlineInstant := time.Now().Add(upstreamPollTimeout)
 	pollInterval := 300 * time.Millisecond
 
 	for {
 		if time.Now().After(deadlineInstant) {
 			return "", ErrUpstreamIncomplete
 		}
-		textCandidate, isDone, fetchError := fetchResponseByID(openAIKey, responseIdentifier, structuredLogger)
+		pollContext, cancelPoll := context.WithDeadline(context.Background(), deadlineInstant)
+		textCandidate, isDone, fetchError := fetchResponseByID(pollContext, openAIKey, responseIdentifier, structuredLogger)
+		cancelPoll()
 		if fetchError != nil {
 			return "", fetchError
 		}
@@ -165,9 +174,10 @@ func pollResponseUntilDone(openAIKey string, responseIdentifier string, structur
 	}
 }
 
-func fetchResponseByID(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, bool, error) {
+// fetchResponseByID retrieves a response by identifier and reports completion.
+func fetchResponseByID(pollContext context.Context, openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, bool, error) {
 	resourceURL := ResponsesURL + "/" + responseIdentifier
-	httpRequest, buildError := buildAuthorizedJSONRequest(http.MethodGet, resourceURL, openAIKey, nil)
+	httpRequest, buildError := buildAuthorizedJSONRequest(pollContext, http.MethodGet, resourceURL, openAIKey, nil)
 	if buildError != nil {
 		return "", false, buildError
 	}
@@ -269,8 +279,9 @@ func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 	return ""
 }
 
-func buildAuthorizedJSONRequest(method string, url string, openAIKey string, body io.Reader) (*http.Request, error) {
-	httpRequest, httpRequestError := http.NewRequest(method, url, body)
+// buildAuthorizedJSONRequest constructs an authorized JSON HTTP request.
+func buildAuthorizedJSONRequest(requestContext context.Context, method string, url string, openAIKey string, body io.Reader) (*http.Request, error) {
+	httpRequest, httpRequestError := http.NewRequestWithContext(requestContext, method, url, body)
 	if httpRequestError != nil {
 		return nil, httpRequestError
 	}
@@ -279,20 +290,42 @@ func buildAuthorizedJSONRequest(method string, url string, openAIKey string, bod
 	return httpRequest, nil
 }
 
+// performJSONRequest executes the HTTP request with retries and reports the result.
 func performJSONRequest(httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEventOnTransportError string) (int, []byte, int64, error) {
 	startTime := time.Now()
-	httpResponse, httpError := HTTPClient.Do(httpRequest)
-	latencyMillis := time.Since(startTime).Milliseconds()
-	if httpError != nil {
-		structuredLogger.Errorw(logEventOnTransportError, "err", httpError, logFieldLatencyMs, latencyMillis)
-		return 0, nil, latencyMillis, httpError
+
+	exponentialBackoff := backoff.NewExponentialBackOff()
+	maximumElapsedDuration := requestTimeout
+	if deadlineInstant, hasDeadline := httpRequest.Context().Deadline(); hasDeadline {
+		remainingDuration := time.Until(deadlineInstant)
+		if remainingDuration < maximumElapsedDuration {
+			maximumElapsedDuration = remainingDuration
+		}
+	}
+	exponentialBackoff.MaxElapsedTime = maximumElapsedDuration
+
+	var httpResponse *http.Response
+	retryOperation := func() error {
+		var httpError error
+		httpResponse, httpError = HTTPClient.Do(httpRequest)
+		if httpError != nil {
+			structuredLogger.Errorw(logEventOnTransportError, "err", httpError)
+		}
+		return httpError
+	}
+
+	retryError := backoff.Retry(retryOperation, backoff.WithContext(exponentialBackoff, httpRequest.Context()))
+	totalLatencyMilliseconds := time.Since(startTime).Milliseconds()
+	if retryError != nil {
+		structuredLogger.Errorw(logEventOnTransportError, "err", retryError, logFieldLatencyMs, totalLatencyMilliseconds)
+		return 0, nil, totalLatencyMilliseconds, retryError
 	}
 	defer httpResponse.Body.Close()
 
 	responseBytes, readError := io.ReadAll(httpResponse.Body)
 	if readError != nil {
 		structuredLogger.Errorw(logEventReadResponseBodyFailed, "err", readError)
-		return httpResponse.StatusCode, nil, latencyMillis, readError
+		return httpResponse.StatusCode, nil, totalLatencyMilliseconds, readError
 	}
-	return httpResponse.StatusCode, responseBytes, latencyMillis, nil
+	return httpResponse.StatusCode, responseBytes, totalLatencyMilliseconds, nil
 }
