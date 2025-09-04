@@ -82,6 +82,8 @@ const (
 	logFieldStatus       = "status"
 	logFieldValue        = "value"
 	logFieldError        = "error"
+	// logFieldExpectedFingerprint identifies the fingerprint of the expected client key.
+	logFieldExpectedFingerprint = "expected_fingerprint"
 
 	logEventOpenAIRequestError    = "OpenAI request error"
 	logEventOpenAIResponse        = "OpenAI API response"

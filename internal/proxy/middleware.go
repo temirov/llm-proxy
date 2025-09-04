@@ -54,12 +54,15 @@ func requestResponseLogger(structuredLogger *zap.SugaredLogger) gin.HandlerFunc 
 // secretMiddleware enforces the shared secret through a constant-time comparison of the `key` query parameter.
 func secretMiddleware(sharedSecret string, structuredLogger *zap.SugaredLogger) gin.HandlerFunc {
 	normalizedSecret := strings.TrimSpace(sharedSecret)
+	expectedSecretBytes := []byte(normalizedSecret)
+	expectedSecretFingerprint := utils.Fingerprint(normalizedSecret)
 	return func(ginContext *gin.Context) {
 		presentedKey := strings.TrimSpace(ginContext.Query(queryParameterKey))
-		if !constantTimeEquals(normalizedSecret, presentedKey) {
+		presentedKeyBytes := []byte(presentedKey)
+		if !constantTimeEquals(expectedSecretBytes, presentedKeyBytes) {
 			structuredLogger.Warnw(
 				logEventForbiddenRequest,
-				"expected_fingerprint", utils.Fingerprint(normalizedSecret),
+				logFieldExpectedFingerprint, expectedSecretFingerprint,
 			)
 			ginContext.String(http.StatusForbidden, errorMissingClientKey)
 			ginContext.Abort()
@@ -69,12 +72,12 @@ func secretMiddleware(sharedSecret string, structuredLogger *zap.SugaredLogger) 
 	}
 }
 
-// constantTimeEquals compares two strings in constant time to reduce side-channel signal.
-func constantTimeEquals(first string, second string) bool {
-	if len(first) != len(second) {
-		_ = subtle.ConstantTimeCompare([]byte(first), []byte(first))
-		_ = subtle.ConstantTimeCompare([]byte(second), []byte(first))
+// constantTimeEquals compares two byte slices in constant time to reduce side-channel signal.
+func constantTimeEquals(firstValue []byte, secondValue []byte) bool {
+	if len(firstValue) != len(secondValue) {
+		_ = subtle.ConstantTimeCompare(firstValue, firstValue)
+		_ = subtle.ConstantTimeCompare(secondValue, firstValue)
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(first), []byte(second)) == 1
+	return subtle.ConstantTimeCompare(firstValue, secondValue) == 1
 }
