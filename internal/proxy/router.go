@@ -28,6 +28,22 @@ func BuildRouter(config Configuration, structuredLogger *zap.SugaredLogger) (*gi
 		return nil, err
 	}
 
+	// Normalize tunables with defaults
+	if config.RequestTimeoutSeconds <= 0 {
+		config.RequestTimeoutSeconds = DefaultRequestTimeoutSeconds
+	}
+	if config.UpstreamPollTimeoutSeconds <= 0 {
+		config.UpstreamPollTimeoutSeconds = DefaultUpstreamPollTimeoutSeconds
+	}
+	if config.MaxOutputTokens <= 0 {
+		config.MaxOutputTokens = DefaultMaxOutputTokens
+	}
+
+	// Apply tunables to package-level knobs
+	requestTimeout = time.Duration(config.RequestTimeoutSeconds) * time.Second
+	upstreamPollTimeout = time.Duration(config.UpstreamPollTimeoutSeconds) * time.Second
+	maxOutputTokens = config.MaxOutputTokens
+
 	validator, validatorError := newModelValidator(config.OpenAIKey, structuredLogger)
 	if validatorError != nil {
 		return nil, validatorError

@@ -1,4 +1,3 @@
-// Package cmd implements the command-line interface for llm-proxy.
 package main
 
 import (
@@ -41,6 +40,9 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 		}
 		if config.Port == 0 {
 			config.Port = viper.GetInt("port")
+			if config.Port == 0 {
+				config.Port = proxy.DefaultPort
+			}
 		}
 		if config.LogLevel == "" {
 			config.LogLevel = viper.GetString("log_level")
@@ -50,9 +52,33 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 		}
 		if config.WorkerCount == 0 {
 			config.WorkerCount = viper.GetInt("workers")
+			if config.WorkerCount == 0 {
+				config.WorkerCount = proxy.DefaultWorkers
+			}
 		}
 		if config.QueueSize == 0 {
 			config.QueueSize = viper.GetInt("queue_size")
+			if config.QueueSize == 0 {
+				config.QueueSize = proxy.DefaultQueueSize
+			}
+		}
+		if config.RequestTimeoutSeconds == 0 {
+			config.RequestTimeoutSeconds = viper.GetInt("request_timeout_seconds")
+			if config.RequestTimeoutSeconds == 0 {
+				config.RequestTimeoutSeconds = proxy.DefaultRequestTimeoutSeconds
+			}
+		}
+		if config.UpstreamPollTimeoutSeconds == 0 {
+			config.UpstreamPollTimeoutSeconds = viper.GetInt("upstream_poll_timeout_seconds")
+			if config.UpstreamPollTimeoutSeconds == 0 {
+				config.UpstreamPollTimeoutSeconds = proxy.DefaultUpstreamPollTimeoutSeconds
+			}
+		}
+		if config.MaxOutputTokens == 0 {
+			config.MaxOutputTokens = viper.GetInt("max_output_tokens")
+			if config.MaxOutputTokens == 0 {
+				config.MaxOutputTokens = proxy.DefaultMaxOutputTokens
+			}
 		}
 
 		var logger *zap.Logger
@@ -70,7 +96,7 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 		defer func() { _ = logger.Sync() }()
 		sugar := logger.Sugar()
 
-		// Fail fast if secret/key are missing (double safety; validateConfig does this too)
+		// Fail fast if secret/key are missing
 		if strings.TrimSpace(config.ServiceSecret) == "" {
 			sugar.Error("SERVICE_SECRET is empty; refusing to start")
 			return apperrors.ErrMissingServiceSecret
@@ -110,6 +136,15 @@ func bindOrDie() error {
 	if err := viper.BindEnv("queue_size", "GPT_QUEUE_SIZE"); err != nil {
 		errs = append(errs, "queue_size:"+err.Error())
 	}
+	if err := viper.BindEnv("port", "HTTP_PORT"); err != nil {
+		errs = append(errs, "port:"+err.Error())
+	}
+	if err := viper.BindEnv("request_timeout_seconds", "GPT_REQUEST_TIMEOUT_SECONDS"); err != nil {
+		errs = append(errs, "request_timeout_seconds:"+err.Error())
+	}
+	if err := viper.BindEnv("upstream_poll_timeout_seconds", "GPT_UPSTREAM_POLL_TIMEOUT_SECONDS"); err != nil {
+		errs = append(errs, "upstream_poll_timeout_seconds:"+err.Error())
+	}
 	if len(errs) > 0 {
 		return errors.New(strings.Join(errs, "; "))
 	}
@@ -121,7 +156,6 @@ func init() {
 	viper.AutomaticEnv()
 
 	if err := bindOrDie(); err != nil {
-		// No logger initialized yet, so print to stderr and exit non-zero via panic.
 		panic("viper env binding failed: " + err.Error())
 	}
 
@@ -141,7 +175,7 @@ func init() {
 		&config.Port,
 		"port",
 		proxy.DefaultPort,
-		"TCP port to listen on (env: GPT_PORT)",
+		"TCP port to listen on (env: HTTP_PORT)",
 	)
 	rootCmd.Flags().StringVar(
 		&config.LogLevel,
@@ -166,6 +200,18 @@ func init() {
 		"queue_size",
 		proxy.DefaultQueueSize,
 		"request queue size (env: GPT_QUEUE_SIZE)",
+	)
+	rootCmd.Flags().IntVar(
+		&config.RequestTimeoutSeconds,
+		"request_timeout",
+		proxy.DefaultRequestTimeoutSeconds,
+		"overall request timeout in seconds (env: GPT_REQUEST_TIMEOUT_SECONDS)",
+	)
+	rootCmd.Flags().IntVar(
+		&config.UpstreamPollTimeoutSeconds,
+		"upstream_poll_timeout",
+		proxy.DefaultUpstreamPollTimeoutSeconds,
+		"upstream poll timeout in seconds for incomplete responses (env: GPT_UPSTREAM_POLL_TIMEOUT_SECONDS)",
 	)
 
 	if err := viper.BindPFlags(rootCmd.Flags()); err != nil {
