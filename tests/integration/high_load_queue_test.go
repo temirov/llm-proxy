@@ -38,20 +38,20 @@ func TestIntegrationHighLoadQueue(testingInstance *testing.T) {
 
 	total := proxy.DefaultQueueSize + 1
 	statuses := make([]int, total)
-	var wg sync.WaitGroup
-	wg.Add(total)
-	for i := 0; i < total; i++ {
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(total)
+	for requestIndex := 0; requestIndex < total; requestIndex++ {
 		go func(index int) {
-			defer wg.Done()
-			resp, err := http.Get(requestURL.String())
-			if err != nil {
+			defer waitGroup.Done()
+			httpResponse, requestError := http.Get(requestURL.String())
+			if requestError != nil {
 				return
 			}
-			statuses[index] = resp.StatusCode
-			resp.Body.Close()
-		}(i)
+			statuses[index] = httpResponse.StatusCode
+			httpResponse.Body.Close()
+		}(requestIndex)
 	}
-	wg.Wait()
+	waitGroup.Wait()
 
 	var okCount, queueFullCount int
 	for _, status := range statuses {
