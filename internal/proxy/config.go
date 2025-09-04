@@ -52,4 +52,5 @@ func validateConfig(config Configuration) error {
 
 var requestTimeout = 30 * time.Second
 
+// ErrUpstreamIncomplete indicates that the upstream provider returned an incomplete response before the poll deadline.
 var ErrUpstreamIncomplete = errors.New("OpenAI API error (incomplete response)")
