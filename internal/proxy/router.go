@@ -60,7 +60,7 @@ func BuildRouter(config Configuration, structuredLogger *zap.SugaredLogger) (*gi
 	}
 
 	router := gin.New()
-	if lvl := strings.ToLower(config.LogLevel); lvl == LogLevelInfo || lvl == LogLevelDebug {
+	if normalizedLogLevel := strings.ToLower(config.LogLevel); normalizedLogLevel == LogLevelInfo || normalizedLogLevel == LogLevelDebug {
 		router.Use(requestResponseLogger(structuredLogger))
 	}
 

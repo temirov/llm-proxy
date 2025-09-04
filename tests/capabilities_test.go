@@ -24,7 +24,7 @@ const (
 
 // TestIntegration_WebSearch_UnsupportedModel_Returns400 verifies that requesting web search for an unsupported model returns an HTTP 400 status code.
 func TestIntegration_WebSearch_UnsupportedModel_Returns400(testingInstance *testing.T) {
-	openAISrv := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
+	openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch {
 		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
 			io.WriteString(responseWriter, `{"data":[{"id":"`+modelIDGPT4oMini+`"},{"id":"`+modelIDGPT4o+`"}]}`)
@@ -34,11 +34,11 @@ func TestIntegration_WebSearch_UnsupportedModel_Returns400(testingInstance *test
 			http.NotFound(responseWriter, httpRequest)
 		}
 	}))
-	defer openAISrv.Close()
+	defer openAIServer.Close()
 
-	proxy.SetModelsURL(openAISrv.URL + "/v1/models")
-	proxy.SetResponsesURL(openAISrv.URL + "/v1/responses")
-	proxy.HTTPClient = openAISrv.Client()
+	proxy.SetModelsURL(openAIServer.URL + "/v1/models")
+	proxy.SetResponsesURL(openAIServer.URL + "/v1/responses")
+	proxy.HTTPClient = openAIServer.Client()
 	testingInstance.Cleanup(proxy.ResetModelsURL)
 	testingInstance.Cleanup(proxy.ResetResponsesURL)
 
@@ -56,10 +56,10 @@ func TestIntegration_WebSearch_UnsupportedModel_Returns400(testingInstance *test
 		testingInstance.Fatalf("BuildRouter error: %v", buildRouterError)
 	}
 
-	app := httptest.NewServer(router)
-	defer app.Close()
+	applicationServer := httptest.NewServer(router)
+	defer applicationServer.Close()
 
-	httpRequest, _ := http.NewRequest("GET", app.URL+"/?prompt=x&key="+serviceSecret+"&model="+modelIDGPT4oMini+"&web_search=1", nil)
+	httpRequest, _ := http.NewRequest("GET", applicationServer.URL+"/?prompt=x&key="+serviceSecret+"&model="+modelIDGPT4oMini+"&web_search=1", nil)
 	httpResponse, requestError := http.DefaultClient.Do(httpRequest)
 	if requestError != nil {
 		testingInstance.Fatalf("request failed: %v", requestError)
@@ -79,7 +79,7 @@ func TestIntegration_WebSearch_UnsupportedModel_Returns400(testingInstance *test
 func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(testingInstance *testing.T) {
 	var observed any
 
-	openAISrv := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
+	openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch {
 		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
 			io.WriteString(responseWriter, `{"data":[{"id":"`+modelIDGPT5Mini+`"}]}`)
@@ -96,11 +96,11 @@ func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(testi
 			http.NotFound(responseWriter, httpRequest)
 		}
 	}))
-	defer openAISrv.Close()
+	defer openAIServer.Close()
 
-	proxy.SetModelsURL(openAISrv.URL + "/v1/models")
-	proxy.SetResponsesURL(openAISrv.URL + "/v1/responses")
-	proxy.HTTPClient = openAISrv.Client()
+	proxy.SetModelsURL(openAIServer.URL + "/v1/models")
+	proxy.SetResponsesURL(openAIServer.URL + "/v1/responses")
+	proxy.HTTPClient = openAIServer.Client()
 	testingInstance.Cleanup(proxy.ResetModelsURL)
 	testingInstance.Cleanup(proxy.ResetResponsesURL)
 
@@ -118,10 +118,10 @@ func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(testi
 		testingInstance.Fatalf("BuildRouter error: %v", buildRouterError)
 	}
 
-	app := httptest.NewServer(router)
-	defer app.Close()
+	applicationServer := httptest.NewServer(router)
+	defer applicationServer.Close()
 
-	httpResponse, requestError := http.Get(app.URL + "/?prompt=hello&key=" + serviceSecret + "&model=" + modelIDGPT5Mini)
+	httpResponse, requestError := http.Get(applicationServer.URL + "/?prompt=hello&key=" + serviceSecret + "&model=" + modelIDGPT5Mini)
 	if requestError != nil {
 		testingInstance.Fatalf("request failed: %v", requestError)
 	}

@@ -121,7 +121,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	if statusCode >= http.StatusBadRequest &&
 		bytes.Contains(responseBytes, []byte(unsupportedTemperatureParameterToken)) &&
 		requestPayload.Temperature != nil {
-		structuredLogger.Infow(logEventRetryingWithoutParam, "parameter", keyTemperature)
+		structuredLogger.Infow(logEventRetryingWithoutParam, logFieldParameter, keyTemperature)
 		requestPayload.Temperature = nil
 		retryPayloadBytes, marshalRetryError := json.Marshal(requestPayload)
 		if marshalRetryError != nil {
@@ -147,7 +147,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	if statusCode >= http.StatusBadRequest &&
 		bytes.Contains(responseBytes, []byte(unsupportedToolsParameterToken)) &&
 		len(requestPayload.Tools) > 0 {
-		structuredLogger.Infow(logEventRetryingWithoutParam, "parameter", keyTools)
+		structuredLogger.Infow(logEventRetryingWithoutParam, logFieldParameter, keyTools)
 		requestPayload.Tools = nil
 		requestPayload.ToolChoice = ""
 		retryPayloadBytes, marshalRetryError := json.Marshal(requestPayload)
@@ -203,7 +203,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		if pollError != nil {
 			structuredLogger.Errorw(
 				logEventOpenAIPollError,
-				"id",
+				logFieldID,
 				responseIdentifier,
 				constants.LogFieldError,
 				pollError,
