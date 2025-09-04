@@ -10,11 +10,6 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	// logEventReadResponseBodyFailed identifies failures while reading an HTTP response body.
-	logEventReadResponseBodyFailed = "read response body failed"
-)
-
 // BuildHTTPRequestWithHeaders constructs an HTTP request and applies headers.
 func BuildHTTPRequestWithHeaders(method string, requestURL string, body io.Reader, headers map[string]string) (*http.Request, error) {
 	httpRequest, httpRequestError := http.NewRequest(method, requestURL, body)
@@ -65,7 +60,7 @@ func PerformHTTPRequest(do func(*http.Request) (*http.Response, error), httpRequ
 	responseBytes, readError := io.ReadAll(httpResponse.Body)
 	if readError != nil {
 		if structuredLogger != nil {
-			structuredLogger.Errorw(logEventReadResponseBodyFailed, "err", readError)
+			structuredLogger.Errorw(constants.LogEventReadResponseBodyFailed, "err", readError)
 		}
 		return httpResponse.StatusCode, nil, latencyMillis, readError
 	}
