@@ -61,7 +61,9 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return "", errors.New(errorRequestBuild)
 	}
 
-	httpRequest, buildError := buildAuthorizedJSONRequest(http.MethodPost, responsesURL, openAIKey, bytes.NewReader(payloadBytes))
+	requestContext, cancelRequest := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancelRequest()
+	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, responsesURL, openAIKey, bytes.NewReader(payloadBytes))
 	if buildError != nil {
 		structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildError)
 		return "", errors.New(errorRequestBuild)
@@ -82,7 +84,9 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 			structuredLogger.Errorw(logEventMarshalRequestPayload, "err", marshalRetryError)
 			return "", errors.New(errorRequestBuild)
 		}
-		retryRequest, buildRetryError := buildAuthorizedJSONRequest(http.MethodPost, responsesURL, openAIKey, bytes.NewReader(retryPayloadBytes))
+		retryContext, cancelRetry := context.WithTimeout(context.Background(), requestTimeout)
+		defer cancelRetry()
+		retryRequest, buildRetryError := buildAuthorizedJSONRequest(retryContext, http.MethodPost, responsesURL, openAIKey, bytes.NewReader(retryPayloadBytes))
 		if buildRetryError != nil {
 			structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildRetryError)
 			return "", errors.New(errorRequestBuild)
@@ -104,7 +108,9 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 			structuredLogger.Errorw(logEventMarshalRequestPayload, "err", marshalRetryError)
 			return "", errors.New(errorRequestBuild)
 		}
-		retryRequest, buildRetryError := buildAuthorizedJSONRequest(http.MethodPost, responsesURL, openAIKey, bytes.NewReader(retryPayloadBytes))
+		retryContext, cancelRetry := context.WithTimeout(context.Background(), requestTimeout)
+		defer cancelRetry()
+		retryRequest, buildRetryError := buildAuthorizedJSONRequest(retryContext, http.MethodPost, responsesURL, openAIKey, bytes.NewReader(retryPayloadBytes))
 		if buildRetryError != nil {
 			structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildRetryError)
 			return "", errors.New(errorRequestBuild)
@@ -185,11 +191,12 @@ func pollResponseUntilDone(openAIKey string, responseIdentifier string, structur
 // fetchResponseByID retrieves a response by identifier and reports whether the response is complete.
 func fetchResponseByID(contextToUse context.Context, openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, bool, error) {
 	resourceURL := responsesURL + "/" + responseIdentifier
-	httpRequest, buildError := buildAuthorizedJSONRequest(http.MethodGet, resourceURL, openAIKey, nil)
+	requestContext, cancelRequest := context.WithTimeout(contextToUse, requestTimeout)
+	defer cancelRequest()
+	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodGet, resourceURL, openAIKey, nil)
 	if buildError != nil {
 		return "", false, buildError
 	}
-	httpRequest = httpRequest.WithContext(contextToUse)
 
 	_, responseBytes, _, transportError := utils.PerformHTTPRequest(HTTPClient.Do, httpRequest, structuredLogger, logEventOpenAIPollError)
 	if transportError != nil {
@@ -290,9 +297,9 @@ func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 	return ""
 }
 
-// buildAuthorizedJSONRequest constructs an HTTP request with authorization and JSON content type headers.
-func buildAuthorizedJSONRequest(method string, resourceURL string, openAIKey string, body io.Reader) (*http.Request, error) {
-	httpRequest, httpRequestError := http.NewRequest(method, resourceURL, body)
+// buildAuthorizedJSONRequest constructs an HTTP request with authorization and JSON content type headers using the provided context.
+func buildAuthorizedJSONRequest(contextToUse context.Context, method string, resourceURL string, openAIKey string, body io.Reader) (*http.Request, error) {
+	httpRequest, httpRequestError := http.NewRequestWithContext(contextToUse, method, resourceURL, body)
 	if httpRequestError != nil {
 		return nil, httpRequestError
 	}
