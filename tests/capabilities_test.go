@@ -12,11 +12,21 @@ import (
 	"go.uber.org/zap"
 )
 
+// Test constants.
+const (
+	modelIDGPT4oMini = "gpt-4o-mini"
+	modelIDGPT4o     = "gpt-4o"
+	modelIDGPT5Mini  = "gpt-5-mini"
+	serviceSecret    = "sekret"
+	openAIKey        = "sk-test"
+	logLevel         = "debug"
+)
+
 func TestIntegration_WebSearch_UnsupportedModel_Returns400(t *testing.T) {
 	openAISrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/v1/models"):
-			io.WriteString(w, `{"data":[{"id":"gpt-4o-mini"},{"id":"gpt-4o"}]}`)
+			io.WriteString(w, `{"data":[{"id":"`+modelIDGPT4oMini+`"},{"id":"`+modelIDGPT4o+`"}]}`)
 		case strings.HasSuffix(r.URL.Path, "/v1/responses"):
 			io.WriteString(w, `{"output_text":"SHOULD_NOT_BE_CALLED"}`)
 		default:
@@ -35,9 +45,9 @@ func TestIntegration_WebSearch_UnsupportedModel_Returns400(t *testing.T) {
 	defer logger.Sync()
 
 	router, err := proxy.BuildRouter(proxy.Configuration{
-		ServiceSecret: "sekret",
-		OpenAIKey:     "sk-test",
-		LogLevel:      "debug",
+		ServiceSecret: serviceSecret,
+		OpenAIKey:     openAIKey,
+		LogLevel:      logLevel,
 		WorkerCount:   1,
 		QueueSize:     4,
 	}, logger.Sugar())
@@ -48,7 +58,7 @@ func TestIntegration_WebSearch_UnsupportedModel_Returns400(t *testing.T) {
 	app := httptest.NewServer(router)
 	defer app.Close()
 
-	req, _ := http.NewRequest("GET", app.URL+"/?prompt=x&key=sekret&model=gpt-4o-mini&web_search=1", nil)
+	req, _ := http.NewRequest("GET", app.URL+"/?prompt=x&key="+serviceSecret+"&model="+modelIDGPT4oMini+"&web_search=1", nil)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
@@ -70,7 +80,7 @@ func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(t *te
 	openAISrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/v1/models"):
-			io.WriteString(w, `{"data":[{"id":"gpt-5-mini"}]}`)
+			io.WriteString(w, `{"data":[{"id":"`+modelIDGPT5Mini+`"}]}`)
 		case strings.HasSuffix(r.URL.Path, "/v1/responses"):
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &observed)
@@ -96,9 +106,9 @@ func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(t *te
 	defer logger.Sync()
 
 	router, err := proxy.BuildRouter(proxy.Configuration{
-		ServiceSecret: "sekret",
-		OpenAIKey:     "sk-test",
-		LogLevel:      "debug",
+		ServiceSecret: serviceSecret,
+		OpenAIKey:     openAIKey,
+		LogLevel:      logLevel,
 		WorkerCount:   1,
 		QueueSize:     4,
 	}, logger.Sugar())
@@ -109,7 +119,7 @@ func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(t *te
 	app := httptest.NewServer(router)
 	defer app.Close()
 
-	res, err := http.Get(app.URL + "/?prompt=hello&key=sekret&model=gpt-5-mini")
+	res, err := http.Get(app.URL + "/?prompt=hello&key=" + serviceSecret + "&model=" + modelIDGPT5Mini)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
