@@ -3,6 +3,7 @@ package proxy
 import (
 	"crypto/subtle"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -11,12 +12,22 @@ import (
 	"go.uber.org/zap"
 )
 
+func sanitizeRequestURI(u *url.URL) string {
+	q := u.Query()
+	if q.Has(queryParameterKey) {
+		q.Set(queryParameterKey, "***REDACTED***")
+	}
+	u2 := *u
+	u2.RawQuery = q.Encode()
+	return u2.RequestURI()
+}
+
 // requestResponseLogger emits structured request and response metadata for traceability.
 func requestResponseLogger(structuredLogger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(ginContext *gin.Context) {
 		requestStart := time.Now()
 		requestMethod := ginContext.Request.Method
-		requestPath := ginContext.Request.URL.RequestURI()
+		requestPath := sanitizeRequestURI(ginContext.Request.URL)
 		requestClientIP := ginContext.ClientIP()
 
 		structuredLogger.Infow(
@@ -46,7 +57,6 @@ func secretMiddleware(sharedSecret string, structuredLogger *zap.SugaredLogger) 
 		if !constantTimeEquals(normalizedSecret, presentedKey) {
 			structuredLogger.Warnw(
 				logEventForbiddenRequest,
-				"presented_key", presentedKey,
 				"expected_fingerprint", utils.Fingerprint(normalizedSecret),
 			)
 			ginContext.AbortWithStatus(http.StatusForbidden)
