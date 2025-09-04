@@ -40,17 +40,17 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		{keyRole: keyUser, keyContent: userPrompt},
 	}
 
-	modelSpecification := resolveModelSpecification(modelIdentifier)
+	modelCapabilities := resolveModelSpecification(modelIdentifier)
 
 	requestPayload := map[string]any{
 		keyModel:           modelIdentifier,
 		keyInput:           messageList,
 		keyMaxOutputTokens: maxOutputTokens,
 	}
-	if modelSpecification.IncludeTemperature {
+	if modelCapabilities.supportsTemperature {
 		requestPayload[keyTemperature] = 0.7
 	}
-	if webSearchEnabled && modelSpecification.IncludeWebSearchTools {
+	if webSearchEnabled && modelCapabilities.supportsWebSearch {
 		requestPayload[keyTools] = []any{map[string]any{keyType: toolTypeWebSearch}}
 		requestPayload[keyToolChoice] = keyAuto
 	}
