@@ -33,24 +33,25 @@ type responsesAPIShim struct {
 	} `json:"choices"`
 }
 
+// openAIRequest sends a prompt to the OpenAI responses API and returns the resulting text.
+// It retries without unsupported parameters and polls for completion when needed.
 func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, systemPrompt string, webSearchEnabled bool, structuredLogger *zap.SugaredLogger) (string, error) {
 	messageList := []map[string]string{
 		{keyRole: keySystem, keyContent: systemPrompt},
 		{keyRole: keyUser, keyContent: userPrompt},
 	}
 
-	// Use model specification to decide what we are allowed to send.
-	spec := resolveModelSpecification(modelIdentifier)
+	modelSpecification := resolveModelSpecification(modelIdentifier)
 
 	requestPayload := map[string]any{
 		keyModel:           modelIdentifier,
 		keyInput:           messageList,
-		keyMaxOutputTokens: maxOutputTokens, // ← configurable
+		keyMaxOutputTokens: maxOutputTokens,
 	}
-	if spec.IncludeTemperature {
+	if modelSpecification.IncludeTemperature {
 		requestPayload[keyTemperature] = 0.7
 	}
-	if webSearchEnabled && spec.IncludeWebSearchTools {
+	if webSearchEnabled && modelSpecification.IncludeWebSearchTools {
 		requestPayload[keyTools] = []any{map[string]any{keyType: toolTypeWebSearch}}
 		requestPayload[keyToolChoice] = keyAuto
 	}
@@ -72,37 +73,51 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return "", errors.New(errorOpenAIRequest)
 	}
 
-	// If upstream rejects 'temperature', retry once without it.
 	if statusCode >= http.StatusBadRequest &&
 		strings.Contains(string(responseBytes), "'temperature'") &&
 		requestPayload[keyTemperature] != nil {
 		structuredLogger.Infow(logEventRetryingWithoutParam, "parameter", keyTemperature)
 		delete(requestPayload, keyTemperature)
-		body, _ := json.Marshal(requestPayload)
-		retryReq, _ := buildAuthorizedJSONRequest(http.MethodPost, ResponsesURL, openAIKey, bytes.NewReader(body))
-		statusCode, responseBytes, latencyMillis, transportError = performJSONRequest(retryReq, structuredLogger, logEventOpenAIRequestError)
+		retryPayloadBytes, marshalRetryError := json.Marshal(requestPayload)
+		if marshalRetryError != nil {
+			structuredLogger.Errorw(logEventMarshalRequestPayload, "err", marshalRetryError)
+			return "", errors.New(errorRequestBuild)
+		}
+		retryRequest, buildRetryError := buildAuthorizedJSONRequest(http.MethodPost, ResponsesURL, openAIKey, bytes.NewReader(retryPayloadBytes))
+		if buildRetryError != nil {
+			structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildRetryError)
+			return "", errors.New(errorRequestBuild)
+		}
+		statusCode, responseBytes, latencyMillis, transportError = performJSONRequest(retryRequest, structuredLogger, logEventOpenAIRequestError)
 		if transportError != nil {
 			return "", errors.New(errorOpenAIRequest)
 		}
 	}
 
-	// If upstream rejects 'tools', retry once without them.
 	if statusCode >= http.StatusBadRequest &&
 		strings.Contains(string(responseBytes), "'tools'") &&
 		requestPayload[keyTools] != nil {
 		structuredLogger.Infow(logEventRetryingWithoutParam, "parameter", keyTools)
 		delete(requestPayload, keyTools)
 		delete(requestPayload, keyToolChoice)
-		body, _ := json.Marshal(requestPayload)
-		retryReq, _ := buildAuthorizedJSONRequest(http.MethodPost, ResponsesURL, openAIKey, bytes.NewReader(body))
-		statusCode, responseBytes, latencyMillis, transportError = performJSONRequest(retryReq, structuredLogger, logEventOpenAIRequestError)
+		retryPayloadBytes, marshalRetryError := json.Marshal(requestPayload)
+		if marshalRetryError != nil {
+			structuredLogger.Errorw(logEventMarshalRequestPayload, "err", marshalRetryError)
+			return "", errors.New(errorRequestBuild)
+		}
+		retryRequest, buildRetryError := buildAuthorizedJSONRequest(http.MethodPost, ResponsesURL, openAIKey, bytes.NewReader(retryPayloadBytes))
+		if buildRetryError != nil {
+			structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildRetryError)
+			return "", errors.New(errorRequestBuild)
+		}
+		statusCode, responseBytes, latencyMillis, transportError = performJSONRequest(retryRequest, structuredLogger, logEventOpenAIRequestError)
 		if transportError != nil {
 			return "", errors.New(errorOpenAIRequest)
 		}
 	}
 
 	var decodedObject map[string]any
-	if err := json.Unmarshal(responseBytes, &decodedObject); err != nil {
+	if unmarshalError := json.Unmarshal(responseBytes, &decodedObject); unmarshalError != nil {
 		decodedObject = nil
 	}
 
@@ -143,28 +158,30 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	return outputText, nil
 }
 
+// pollResponseUntilDone repeatedly fetches a response until it is complete or the poll timeout elapses.
 func pollResponseUntilDone(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, error) {
-	deadlineInstant := time.Now().Add(upstreamPollTimeout) // ← configurable
+	deadlineInstant := time.Now().Add(upstreamPollTimeout)
 	pollInterval := 300 * time.Millisecond
 
 	for {
 		if time.Now().After(deadlineInstant) {
 			return "", ErrUpstreamIncomplete
 		}
-		textCandidate, isDone, fetchError := fetchResponseByID(openAIKey, responseIdentifier, structuredLogger)
+		textCandidate, responseComplete, fetchError := fetchResponseByID(openAIKey, responseIdentifier, structuredLogger)
 		if fetchError != nil {
 			return "", fetchError
 		}
-		if isDone && !utils.IsBlank(textCandidate) {
+		if responseComplete && !utils.IsBlank(textCandidate) {
 			return textCandidate, nil
 		}
-		if isDone {
+		if responseComplete {
 			return "", ErrUpstreamIncomplete
 		}
 		time.Sleep(pollInterval)
 	}
 }
 
+// fetchResponseByID retrieves a response by identifier and reports whether the response is complete.
 func fetchResponseByID(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, bool, error) {
 	resourceURL := ResponsesURL + "/" + responseIdentifier
 	httpRequest, buildError := buildAuthorizedJSONRequest(http.MethodGet, resourceURL, openAIKey, nil)
@@ -178,13 +195,13 @@ func fetchResponseByID(openAIKey string, responseIdentifier string, structuredLo
 	}
 
 	var decodedObject map[string]any
-	if err := json.Unmarshal(responseBytes, &decodedObject); err != nil {
+	if unmarshalError := json.Unmarshal(responseBytes, &decodedObject); unmarshalError != nil {
 		decodedObject = nil
 	}
-	statusValue := strings.ToLower(getString(decodedObject, jsonFieldStatus))
+	responseStatus := strings.ToLower(getString(decodedObject, jsonFieldStatus))
 	outputText := extractTextFromAny(decodedObject, responseBytes)
 
-	switch statusValue {
+	switch responseStatus {
 	case statusCompleted, statusSucceeded, statusDone:
 		return outputText, true, nil
 	case statusCancelled, statusFailed, statusErrored:
@@ -194,21 +211,23 @@ func fetchResponseByID(openAIKey string, responseIdentifier string, structuredLo
 	}
 }
 
+// getString returns a string value from the provided container for the specified field.
 func getString(container map[string]any, field string) string {
 	if container == nil {
 		return ""
 	}
 	if rawValue, present := container[field]; present {
-		if castValue, ok := rawValue.(string); ok {
+		if castValue, isString := rawValue.(string); isString {
 			return castValue
 		}
 	}
 	return ""
 }
 
+// extractTextFromAny obtains text content from various possible response shapes.
 func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 	if container != nil {
-		if direct, ok := container[jsonFieldOutputText].(string); ok && !utils.IsBlank(direct) {
+		if direct, isString := container[jsonFieldOutputText].(string); isString && !utils.IsBlank(direct) {
 			return direct
 		}
 	}
@@ -223,7 +242,7 @@ func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 	var newShape struct {
 		Output []outputItem `json:"output"`
 	}
-	if err := json.Unmarshal(rawPayload, &newShape); err == nil && len(newShape.Output) > 0 {
+	if unmarshalError := json.Unmarshal(rawPayload, &newShape); unmarshalError == nil && len(newShape.Output) > 0 {
 		var textBuilder strings.Builder
 		for _, outputEntry := range newShape.Output {
 			for _, contentEntry := range outputEntry.Content {
@@ -245,7 +264,7 @@ func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 			Content []contentPart `json:"content"`
 		} `json:"response"`
 	}
-	if err := json.Unmarshal(rawPayload, &altShape); err == nil && len(altShape.Response) > 0 {
+	if unmarshalError := json.Unmarshal(rawPayload, &altShape); unmarshalError == nil && len(altShape.Response) > 0 {
 		var textBuilder strings.Builder
 		for _, responseEntry := range altShape.Response {
 			for _, contentEntry := range responseEntry.Content {
@@ -263,14 +282,15 @@ func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 	}
 
 	var legacy responsesAPIShim
-	if err := json.Unmarshal(rawPayload, &legacy); err == nil && len(legacy.Choices) > 0 {
+	if unmarshalError := json.Unmarshal(rawPayload, &legacy); unmarshalError == nil && len(legacy.Choices) > 0 {
 		return legacy.Choices[0].Message.Content
 	}
 	return ""
 }
 
-func buildAuthorizedJSONRequest(method string, url string, openAIKey string, body io.Reader) (*http.Request, error) {
-	httpRequest, httpRequestError := http.NewRequest(method, url, body)
+// buildAuthorizedJSONRequest constructs an HTTP request with authorization and JSON content type headers.
+func buildAuthorizedJSONRequest(method string, resourceURL string, openAIKey string, body io.Reader) (*http.Request, error) {
+	httpRequest, httpRequestError := http.NewRequest(method, resourceURL, body)
 	if httpRequestError != nil {
 		return nil, httpRequestError
 	}
@@ -279,6 +299,8 @@ func buildAuthorizedJSONRequest(method string, url string, openAIKey string, bod
 	return httpRequest, nil
 }
 
+// performJSONRequest executes an HTTP request and returns the status code, body, and latency.
+// Transport errors are logged using the provided logger.
 func performJSONRequest(httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEventOnTransportError string) (int, []byte, int64, error) {
 	startTime := time.Now()
 	httpResponse, httpError := HTTPClient.Do(httpRequest)
