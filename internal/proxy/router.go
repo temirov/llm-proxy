@@ -27,49 +27,52 @@ type requestTask struct {
 	reply            chan result
 }
 
-func BuildRouter(config Configuration, structuredLogger *zap.SugaredLogger) (*gin.Engine, error) {
-	if validationError := validateConfig(config); validationError != nil {
+// normalizeAndApplyTunables ensures configuration tunables have sensible defaults and updates package-level variables.
+func normalizeAndApplyTunables(configuration *Configuration) {
+	if configuration.RequestTimeoutSeconds <= 0 {
+		configuration.RequestTimeoutSeconds = DefaultRequestTimeoutSeconds
+	}
+	if configuration.UpstreamPollTimeoutSeconds <= 0 {
+		configuration.UpstreamPollTimeoutSeconds = DefaultUpstreamPollTimeoutSeconds
+	}
+	if configuration.MaxOutputTokens <= 0 {
+		configuration.MaxOutputTokens = DefaultMaxOutputTokens
+	}
+	requestTimeout = time.Duration(configuration.RequestTimeoutSeconds) * time.Second
+	upstreamPollTimeout = time.Duration(configuration.UpstreamPollTimeoutSeconds) * time.Second
+	maxOutputTokens = configuration.MaxOutputTokens
+}
+
+// BuildRouter constructs the HTTP router used by the proxy. configuration supplies queue sizes, worker counts, timeout values, API credentials and other settings. structuredLogger records structured log messages during routing.
+func BuildRouter(configuration Configuration, structuredLogger *zap.SugaredLogger) (*gin.Engine, error) {
+	if validationError := validateConfig(configuration); validationError != nil {
 		return nil, validationError
 	}
 
-	// Normalize tunables with defaults
-	if config.RequestTimeoutSeconds <= 0 {
-		config.RequestTimeoutSeconds = DefaultRequestTimeoutSeconds
-	}
-	if config.UpstreamPollTimeoutSeconds <= 0 {
-		config.UpstreamPollTimeoutSeconds = DefaultUpstreamPollTimeoutSeconds
-	}
-	if config.MaxOutputTokens <= 0 {
-		config.MaxOutputTokens = DefaultMaxOutputTokens
-	}
+	normalizeAndApplyTunables(&configuration)
 
-	// Apply tunables to package-level knobs
-	requestTimeout = time.Duration(config.RequestTimeoutSeconds) * time.Second
-	upstreamPollTimeout = time.Duration(config.UpstreamPollTimeoutSeconds) * time.Second
-	maxOutputTokens = config.MaxOutputTokens
-
-	validator, validatorError := newModelValidator(config.OpenAIKey, structuredLogger)
+	validator, validatorError := newModelValidator(configuration.OpenAIKey, structuredLogger)
 	if validatorError != nil {
 		return nil, validatorError
 	}
 
-	if strings.ToLower(config.LogLevel) == LogLevelDebug {
+	if strings.ToLower(configuration.LogLevel) == LogLevelDebug {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	router := gin.New()
-	if normalizedLogLevel := strings.ToLower(config.LogLevel); normalizedLogLevel == LogLevelInfo || normalizedLogLevel == LogLevelDebug {
+	if normalizedLogLevel := strings.ToLower(configuration.LogLevel); normalizedLogLevel == LogLevelInfo || normalizedLogLevel == LogLevelDebug {
 		router.Use(requestResponseLogger(structuredLogger))
 	}
 
-	taskQueue := make(chan requestTask, config.QueueSize)
-	for workerIndex := 0; workerIndex < config.WorkerCount; workerIndex++ {
+	taskQueue := make(chan requestTask, configuration.QueueSize)
+	for workerIndex := 0; workerIndex < configuration.WorkerCount; workerIndex++ {
 		go func() {
 			for pending := range taskQueue {
 				text, requestError := openAIRequest(
-					config.OpenAIKey,
+					configuration.OpenAIKey,
 					pending.model,
 					pending.prompt,
 					pending.systemPrompt,
@@ -81,17 +84,18 @@ func BuildRouter(config Configuration, structuredLogger *zap.SugaredLogger) (*gi
 		}()
 	}
 
-	router.Use(gin.Recovery(), secretMiddleware(config.ServiceSecret, structuredLogger))
-	router.GET("/", chatHandler(taskQueue, config.SystemPrompt, validator, structuredLogger))
+	router.Use(gin.Recovery(), secretMiddleware(configuration.ServiceSecret, structuredLogger))
+	router.GET("/", chatHandler(taskQueue, configuration.SystemPrompt, validator, structuredLogger))
 	return router, nil
 }
 
-func Serve(config Configuration, structuredLogger *zap.SugaredLogger) error {
-	router, buildError := BuildRouter(config, structuredLogger)
+// Serve builds the router from the supplied configuration and structuredLogger and starts the HTTP server on the configured port.
+func Serve(configuration Configuration, structuredLogger *zap.SugaredLogger) error {
+	router, buildError := BuildRouter(configuration, structuredLogger)
 	if buildError != nil {
 		return buildError
 	}
-	return router.Run(fmt.Sprintf(":%d", config.Port))
+	return router.Run(fmt.Sprintf(":%d", configuration.Port))
 }
 
 // chatHandler returns a handler that forwards requests to the task queue.
