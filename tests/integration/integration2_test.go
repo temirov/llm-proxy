@@ -95,7 +95,7 @@ func TestClientResponseDelivery(testingInstance *testing.T) {
 			router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 				ServiceSecret: serviceSecretValue,
 				OpenAIKey:     openAIKeyValue,
-				LogLevel:      "debug",
+				LogLevel:      logLevelDebug,
 				WorkerCount:   1,
 				QueueSize:     8,
 			}, newLogger(subTest))
@@ -160,7 +160,7 @@ func TestIntegrationConfiguration(testingInstance *testing.T) {
 		},
 		{
 			name:           "wrong_key",
-			config:         proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: "debug", WorkerCount: 1, QueueSize: 4},
+			config:         proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: logLevelDebug, WorkerCount: 1, QueueSize: 4},
 			requestKey:     "wrong",
 			expectedStatus: http.StatusForbidden,
 		},
