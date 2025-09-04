@@ -91,6 +91,7 @@ func Serve(config Configuration, structuredLogger *zap.SugaredLogger) error {
 	return router.Run(fmt.Sprintf(":%d", config.Port))
 }
 
+// chatHandler returns a handler that forwards requests to the task queue.
 func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validator *modelValidator, structuredLogger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(ginContext *gin.Context) {
 		userPrompt := ginContext.Query(queryParameterPrompt)
@@ -133,12 +134,22 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 		}
 
 		replyChannel := make(chan result, 1)
-		taskQueue <- requestTask{
+		requestDeadline, deadlineFound := ginContext.Request.Context().Deadline()
+		enqueueDuration := requestTimeout
+		if deadlineFound {
+			enqueueDuration = time.Until(requestDeadline)
+		}
+		select {
+		case taskQueue <- requestTask{
 			prompt:           userPrompt,
 			systemPrompt:     systemPrompt,
 			model:            modelIdentifier,
 			webSearchEnabled: webSearchEnabled,
 			reply:            replyChannel,
+		}:
+		case <-time.After(enqueueDuration):
+			ginContext.String(http.StatusServiceUnavailable, errorQueueFull)
+			return
 		}
 
 		select {

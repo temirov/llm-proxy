@@ -18,11 +18,11 @@ type roundTripperFunc func(req *http.Request) (*http.Response, error)
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
 // newRouterWithStubbedOpenAI returns a router that uses a stubbed OpenAI backend.
-func newRouterWithStubbedOpenAI(t *testing.T, modelsBody, responsesBody string) *gin.Engine {
+func newRouterWithStubbedOpenAI(t *testing.T, modelsBody, responsesBody string, workerCount, queueSize, requestTimeoutSeconds int) *gin.Engine {
 	t.Helper()
 
-	orig := proxy.HTTPClient
-	t.Cleanup(func() { proxy.HTTPClient = orig })
+	originalClient := proxy.HTTPClient
+	t.Cleanup(func() { proxy.HTTPClient = originalClient })
 
 	proxy.HTTPClient = &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
@@ -52,15 +52,16 @@ func newRouterWithStubbedOpenAI(t *testing.T, modelsBody, responsesBody string) 
 
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
-	router, err := proxy.BuildRouter(proxy.Configuration{
-		ServiceSecret: "sekret",
-		OpenAIKey:     "sk-test",
-		LogLevel:      "debug",
-		WorkerCount:   1,
-		QueueSize:     4,
+	router, buildError := proxy.BuildRouter(proxy.Configuration{
+		ServiceSecret:         "sekret",
+		OpenAIKey:             "sk-test",
+		LogLevel:              "debug",
+		WorkerCount:           workerCount,
+		QueueSize:             queueSize,
+		RequestTimeoutSeconds: requestTimeoutSeconds,
 	}, logger.Sugar())
-	if err != nil {
-		t.Fatalf("BuildRouter error: %v", err)
+	if buildError != nil {
+		t.Fatalf("BuildRouter error: %v", buildError)
 	}
 	return router
 }
@@ -77,20 +78,23 @@ func TestEndpoint_Empty200TreatedAsError(t *testing.T) {
 		t,
 		`{"data":[{"id":"gpt-4.1"}]}`,
 		`{"output":[]}`,
+		1,
+		4,
+		5,
 	)
 
-	srv := httptest.NewServer(router)
-	t.Cleanup(srv.Close)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
 
-	req, _ := http.NewRequest("GET", srv.URL+"/?prompt=test&key=sekret", nil)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
+	request, _ := http.NewRequest("GET", server.URL+"/?prompt=test&key=sekret", nil)
+	response, requestError := http.DefaultClient.Do(request)
+	if requestError != nil {
+		t.Fatalf("request failed: %v", requestError)
 	}
-	defer res.Body.Close()
+	defer response.Body.Close()
 
-	if res.StatusCode != http.StatusBadGateway {
-		t.Fatalf("status=%d want=%d", res.StatusCode, http.StatusBadGateway)
+	if response.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status=%d want=%d", response.StatusCode, http.StatusBadGateway)
 	}
 }
 
@@ -106,24 +110,68 @@ func TestEndpoint_RespectsAcceptHeaderCSV(t *testing.T) {
 		t,
 		`{"data":[{"id":"gpt-4.1"}]}`,
 		`{"output_text":"Hello, world!"}`,
+		1,
+		4,
+		5,
 	)
 
-	srv := httptest.NewServer(router)
-	t.Cleanup(srv.Close)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
 
-	req, _ := http.NewRequest("GET", srv.URL+"/?prompt=anything&key=sekret", nil)
-	req.Header.Set("Accept", "text/csv")
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
+	request, _ := http.NewRequest("GET", server.URL+"/?prompt=anything&key=sekret", nil)
+	request.Header.Set("Accept", "text/csv")
+	response, requestError := http.DefaultClient.Do(request)
+	if requestError != nil {
+		t.Fatalf("request failed: %v", requestError)
 	}
-	defer res.Body.Close()
+	defer response.Body.Close()
 
-	if ct := res.Header.Get("Content-Type"); ct != "text/csv" {
-		t.Fatalf("content-type=%q want=%q", ct, "text/csv")
+	if contentType := response.Header.Get("Content-Type"); contentType != "text/csv" {
+		t.Fatalf("content-type=%q want=%q", contentType, "text/csv")
 	}
-	b, _ := io.ReadAll(res.Body)
-	if got := string(b); got != "\"Hello, world!\"\n" {
-		t.Fatalf("body=%q want=%q", got, "\"Hello, world!\"\n")
+	responseBody, _ := io.ReadAll(response.Body)
+	if body := string(responseBody); body != "\"Hello, world!\"\n" {
+		t.Fatalf("body=%q want=%q", body, "\"Hello, world!\"\n")
+	}
+}
+
+func TestEndpoint_ReturnsServiceUnavailableWhenQueueFull(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	proxy.SetModelsURL("https://mock.local/v1/models")
+	proxy.SetResponsesURL("https://mock.local/v1/responses")
+	t.Cleanup(proxy.ResetModelsURL)
+	t.Cleanup(proxy.ResetResponsesURL)
+
+	router := newRouterWithStubbedOpenAI(
+		t,
+		`{"data":[{"id":"gpt-4.1"}]}`,
+		`{"output_text":"queued"}`,
+		0,
+		1,
+		1,
+	)
+
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	firstRequest, _ := http.NewRequest("GET", server.URL+"/?prompt=first&key=sekret", nil)
+	go http.DefaultClient.Do(firstRequest)
+	time.Sleep(50 * time.Millisecond)
+
+	secondRequest, _ := http.NewRequest("GET", server.URL+"/?prompt=second&key=sekret", nil)
+	secondResponse, secondRequestError := http.DefaultClient.Do(secondRequest)
+	if secondRequestError != nil {
+		t.Fatalf("request failed: %v", secondRequestError)
+	}
+	defer secondResponse.Body.Close()
+
+	if secondResponse.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d want=%d", secondResponse.StatusCode, http.StatusServiceUnavailable)
+	}
+	responseBody, _ := io.ReadAll(secondResponse.Body)
+	const expectedBody = "request queue full"
+	if strings.TrimSpace(string(responseBody)) != expectedBody {
+		t.Fatalf("body=%q want=%q", string(responseBody), expectedBody)
 	}
 }

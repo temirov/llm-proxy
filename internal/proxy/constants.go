@@ -37,6 +37,8 @@ const (
 	errorOpenAIModelValidation       = "OpenAI model validation error"
 	errorWebSearchUnsupportedByModel = "web_search is not supported by the selected model"
 	errorResponseFormat              = "response formatting error"
+	// errorQueueFull indicates that the internal request queue cannot accept additional tasks.
+	errorQueueFull = "request queue full"
 
 	toolTypeWebSearch = "web_search"
 
