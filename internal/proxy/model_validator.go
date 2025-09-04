@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/temirov/llm-proxy/internal/logging"
 	"go.uber.org/zap"
 )
 
@@ -37,14 +38,14 @@ func (validator *modelValidator) refresh() error {
 
 	startTime := time.Now()
 	httpResponse, httpError := HTTPClient.Do(httpRequest)
-	latencyMillis := time.Since(startTime).Milliseconds()
+	latencyMilliseconds := time.Since(startTime).Milliseconds()
 	if httpError != nil {
-		validator.logger.Errorw(logEventOpenAIModelsListError, "err", httpError, logFieldLatencyMs, latencyMillis)
+		validator.logger.Errorw(logEventOpenAIModelsListError, "err", httpError, logging.LogFieldLatencyMilliseconds, latencyMilliseconds)
 		return httpError
 	}
 	defer httpResponse.Body.Close()
 
-	validator.logger.Infow(logEventOpenAIModelsList, logFieldHTTPStatus, httpResponse.StatusCode, logFieldLatencyMs, latencyMillis)
+	validator.logger.Infow(logEventOpenAIModelsList, logFieldHTTPStatus, httpResponse.StatusCode, logging.LogFieldLatencyMilliseconds, latencyMilliseconds)
 	if httpResponse.StatusCode != http.StatusOK {
 		bodyBytes, readError := io.ReadAll(httpResponse.Body)
 		if readError != nil {

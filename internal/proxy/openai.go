@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/temirov/llm-proxy/internal/logging"
 	"github.com/temirov/llm-proxy/internal/utils"
 	"go.uber.org/zap"
 )
@@ -68,7 +69,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return "", errors.New(errorRequestBuild)
 	}
 
-	statusCode, responseBytes, latencyMillis, transportError := performJSONRequest(httpRequest, structuredLogger, logEventOpenAIRequestError)
+	statusCode, responseBytes, latencyMilliseconds, transportError := performJSONRequest(httpRequest, structuredLogger, logEventOpenAIRequestError)
 	if transportError != nil {
 		return "", errors.New(errorOpenAIRequest)
 	}
@@ -88,7 +89,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 			structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildRetryError)
 			return "", errors.New(errorRequestBuild)
 		}
-		statusCode, responseBytes, latencyMillis, transportError = performJSONRequest(retryRequest, structuredLogger, logEventOpenAIRequestError)
+		statusCode, responseBytes, latencyMilliseconds, transportError = performJSONRequest(retryRequest, structuredLogger, logEventOpenAIRequestError)
 		if transportError != nil {
 			return "", errors.New(errorOpenAIRequest)
 		}
@@ -110,7 +111,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 			structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildRetryError)
 			return "", errors.New(errorRequestBuild)
 		}
-		statusCode, responseBytes, latencyMillis, transportError = performJSONRequest(retryRequest, structuredLogger, logEventOpenAIRequestError)
+		statusCode, responseBytes, latencyMilliseconds, transportError = performJSONRequest(retryRequest, structuredLogger, logEventOpenAIRequestError)
 		if transportError != nil {
 			return "", errors.New(errorOpenAIRequest)
 		}
@@ -129,7 +130,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		logEventOpenAIResponse,
 		logFieldHTTPStatus, statusCode,
 		logFieldAPIStatus, apiStatus,
-		logFieldLatencyMs, latencyMillis,
+		logging.LogFieldLatencyMilliseconds, latencyMilliseconds,
 		logFieldResponseText, outputText,
 	)
 
@@ -304,17 +305,17 @@ func buildAuthorizedJSONRequest(method string, resourceURL string, openAIKey str
 func performJSONRequest(httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEventOnTransportError string) (int, []byte, int64, error) {
 	startTime := time.Now()
 	httpResponse, httpError := HTTPClient.Do(httpRequest)
-	latencyMillis := time.Since(startTime).Milliseconds()
+	latencyMilliseconds := time.Since(startTime).Milliseconds()
 	if httpError != nil {
-		structuredLogger.Errorw(logEventOnTransportError, "err", httpError, logFieldLatencyMs, latencyMillis)
-		return 0, nil, latencyMillis, httpError
+		structuredLogger.Errorw(logEventOnTransportError, "err", httpError, logging.LogFieldLatencyMilliseconds, latencyMilliseconds)
+		return 0, nil, latencyMilliseconds, httpError
 	}
 	defer httpResponse.Body.Close()
 
 	responseBytes, readError := io.ReadAll(httpResponse.Body)
 	if readError != nil {
-		structuredLogger.Errorw(logEventReadResponseBodyFailed, "err", readError)
-		return httpResponse.StatusCode, nil, latencyMillis, readError
+		structuredLogger.Errorw(logging.LogEventReadResponseBodyFailed, "err", readError)
+		return httpResponse.StatusCode, nil, latencyMilliseconds, readError
 	}
-	return httpResponse.StatusCode, responseBytes, latencyMillis, nil
+	return httpResponse.StatusCode, responseBytes, latencyMilliseconds, nil
 }

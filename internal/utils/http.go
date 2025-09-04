@@ -5,15 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/temirov/llm-proxy/internal/logging"
 	"go.uber.org/zap"
-)
-
-const (
-	// logEventReadResponseBodyFailed identifies failures while reading an HTTP response body.
-	logEventReadResponseBodyFailed = "read response body failed"
-
-	// logFieldLatencyMs represents the log field key for HTTP latency in milliseconds.
-	logFieldLatencyMs = "latency_ms"
 )
 
 // BuildHTTPRequestWithHeaders constructs an HTTP request and applies headers.
@@ -32,21 +25,21 @@ func BuildHTTPRequestWithHeaders(method string, requestURL string, body io.Reade
 func PerformHTTPRequest(do func(*http.Request) (*http.Response, error), httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEventOnTransportError string) (int, []byte, int64, error) {
 	startTime := time.Now()
 	httpResponse, httpError := do(httpRequest)
-	latencyMillis := time.Since(startTime).Milliseconds()
+	latencyMilliseconds := time.Since(startTime).Milliseconds()
 	if httpError != nil {
 		if structuredLogger != nil {
-			structuredLogger.Errorw(logEventOnTransportError, "err", httpError, logFieldLatencyMs, latencyMillis)
+			structuredLogger.Errorw(logEventOnTransportError, "err", httpError, logging.LogFieldLatencyMilliseconds, latencyMilliseconds)
 		}
-		return 0, nil, latencyMillis, httpError
+		return 0, nil, latencyMilliseconds, httpError
 	}
 	defer httpResponse.Body.Close()
 
 	responseBytes, readError := io.ReadAll(httpResponse.Body)
 	if readError != nil {
 		if structuredLogger != nil {
-			structuredLogger.Errorw(logEventReadResponseBodyFailed, "err", readError)
+			structuredLogger.Errorw(logging.LogEventReadResponseBodyFailed, "err", readError)
 		}
-		return httpResponse.StatusCode, nil, latencyMillis, readError
+		return httpResponse.StatusCode, nil, latencyMilliseconds, readError
 	}
-	return httpResponse.StatusCode, responseBytes, latencyMillis, nil
+	return httpResponse.StatusCode, responseBytes, latencyMilliseconds, nil
 }

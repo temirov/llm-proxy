@@ -59,7 +59,6 @@ const (
 
 	logFieldHTTPStatus   = "http_status"
 	logFieldAPIStatus    = "api_status"
-	logFieldLatencyMs    = "latency_ms"
 	logFieldResponseText = "response_text"
 	logFieldMethod       = "method"
 	logFieldPath         = "path"
@@ -78,7 +77,6 @@ const (
 	logEventResponseSent                  = "response sent"
 	logEventMarshalRequestPayload         = "marshal request payload failed"
 	logEventBuildHTTPRequest              = "build HTTP request failed"
-	logEventReadResponseBodyFailed        = "read response body failed"
 	logEventRetryingWithoutParam          = "retrying without parameter"
 	logEventParseWebSearchParameterFailed = "parse web_search parameter failed"
 

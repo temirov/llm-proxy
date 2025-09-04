@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/temirov/llm-proxy/internal/logging"
 	"github.com/temirov/llm-proxy/internal/utils"
 	"go.uber.org/zap"
 )
@@ -41,11 +42,11 @@ func requestResponseLogger(structuredLogger *zap.SugaredLogger) gin.HandlerFunc 
 		ginContext.Next()
 
 		responseStatus := ginContext.Writer.Status()
-		responseLatencyMillis := time.Since(requestStart).Milliseconds()
+		responseLatencyMilliseconds := time.Since(requestStart).Milliseconds()
 		structuredLogger.Infow(
 			logEventResponseSent,
 			logFieldStatus, responseStatus,
-			logFieldLatencyMs, responseLatencyMillis,
+			logging.LogFieldLatencyMilliseconds, responseLatencyMilliseconds,
 		)
 	}
 }
