@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/temirov/llm-proxy/internal/constants"
 	"go.uber.org/zap"
 )
 
@@ -25,7 +26,7 @@ func formatResponse(modelText string, preferred string, originalPrompt string, s
 	case strings.Contains(preferred, mimeApplicationJSON):
 		encodedJSON, marshalError := json.Marshal(map[string]string{responseRequestAttribute: originalPrompt, jsonFieldResponse: modelText})
 		if marshalError != nil {
-			structuredLogger.Errorw(logEventMarshalResponsePayload, logFieldError, marshalError)
+			structuredLogger.Errorw(logEventMarshalResponsePayload, constants.LogFieldError, marshalError)
 			return errorResponseFormat, mimeTextPlain
 		}
 		return string(encodedJSON), mimeApplicationJSON
@@ -37,7 +38,7 @@ func formatResponse(modelText string, preferred string, originalPrompt string, s
 		}
 		encodedXML, marshalError := xml.Marshal(xmlEnvelope{Request: originalPrompt, Text: modelText})
 		if marshalError != nil {
-			structuredLogger.Errorw(logEventMarshalResponsePayload, logFieldError, marshalError)
+			structuredLogger.Errorw(logEventMarshalResponsePayload, constants.LogFieldError, marshalError)
 			return errorResponseFormat, mimeTextPlain
 		}
 		return string(encodedXML), mimeApplicationXML

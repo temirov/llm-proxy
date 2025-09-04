@@ -88,6 +88,7 @@ const (
 	logFieldParameter = "parameter"
 	// logFieldID identifies the response identifier logged for traceability.
 	logFieldID = "id"
+
 	// logFieldExpectedFingerprint identifies the fingerprint of the expected client key.
 	logFieldExpectedFingerprint = "expected_fingerprint"
 
