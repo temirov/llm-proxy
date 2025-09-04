@@ -132,6 +132,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 
 	var decodedObject map[string]any
 	if unmarshalError := json.Unmarshal(responseBytes, &decodedObject); unmarshalError != nil {
+		structuredLogger.Errorw(logEventParseOpenAIResponseFailed, constants.LogFieldError, unmarshalError)
 		decodedObject = nil
 	}
 
@@ -220,6 +221,7 @@ func fetchResponseByID(contextToUse context.Context, openAIKey string, responseI
 
 	var decodedObject map[string]any
 	if unmarshalError := json.Unmarshal(responseBytes, &decodedObject); unmarshalError != nil {
+		structuredLogger.Errorw(logEventParseOpenAIResponseFailed, constants.LogFieldError, unmarshalError)
 		decodedObject = nil
 	}
 	responseStatus := strings.ToLower(getString(decodedObject, jsonFieldStatus))
