@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,11 +24,6 @@ type requestTask struct {
 	model            string
 	webSearchEnabled bool
 	reply            chan result
-}
-
-// replyChannelPool provides reusable reply channels to limit allocations.
-var replyChannelPool = sync.Pool{
-	New: func() any { return make(chan result, 1) },
 }
 
 func BuildRouter(config Configuration, structuredLogger *zap.SugaredLogger) (*gin.Engine, error) {
@@ -141,7 +135,7 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 			return
 		}
 
-		replyChannel := replyChannelPool.Get().(chan result)
+		replyChannel := make(chan result, 1)
 		requestDeadline, deadlineFound := ginContext.Request.Context().Deadline()
 		enqueueDuration := requestTimeout
 		if deadlineFound {
@@ -159,7 +153,6 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 			enqueueCancel()
 		case <-enqueueContext.Done():
 			enqueueCancel()
-			replyChannelPool.Put(replyChannel)
 			ginContext.String(http.StatusServiceUnavailable, errorQueueFull)
 			return
 		}
@@ -176,18 +169,15 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 				} else {
 					ginContext.String(http.StatusBadGateway, outcome.requestError.Error())
 				}
-				replyChannelPool.Put(replyChannel)
 				return
 			}
 			mime := preferredMime(ginContext)
 			formattedBody, contentType := formatResponse(outcome.text, mime, userPrompt, structuredLogger)
 			ginContext.Data(http.StatusOK, contentType, []byte(formattedBody))
-			replyChannelPool.Put(replyChannel)
 		case <-requestContext.Done():
 			requestCancel()
-			go func(channelToReturn chan result) {
-				<-channelToReturn
-				replyChannelPool.Put(channelToReturn)
+			go func(channelToDrain chan result) {
+				<-channelToDrain
 			}(replyChannel)
 			ginContext.String(http.StatusGatewayTimeout, errorRequestTimedOut)
 		}
