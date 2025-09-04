@@ -22,7 +22,7 @@ type HTTPDoer interface {
 var (
 	HTTPClient          HTTPDoer = http.DefaultClient
 	maxOutputTokens              = DefaultMaxOutputTokens
-	upstreamPollTimeout          = 10 * time.Second
+	upstreamPollTimeout time.Duration
 )
 
 type responsesAPIShim struct {
