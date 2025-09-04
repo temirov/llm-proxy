@@ -65,7 +65,7 @@ var config proxy.Configuration
 func Execute() {
 	rootCmd.SilenceUsage = false
 	rootCmd.SilenceErrors = false
-	if err := rootCmd.Execute(); err != nil {
+	if executeError := rootCmd.Execute(); executeError != nil {
 		os.Exit(1)
 	}
 }
@@ -164,35 +164,35 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 // bindOrDie wraps viper bindings and returns a combined error if any bind fails.
 func bindOrDie() error {
 	var errs []string
-	if err := viper.BindEnv(keyOpenAIAPIKey, envOpenAIAPIKey); err != nil {
-		errs = append(errs, keyOpenAIAPIKey+":"+err.Error())
+	if bindError := viper.BindEnv(keyOpenAIAPIKey, envOpenAIAPIKey); bindError != nil {
+		errs = append(errs, keyOpenAIAPIKey+":"+bindError.Error())
 	}
-	if err := viper.BindEnv(keyServiceSecret, envServiceSecret); err != nil {
-		errs = append(errs, keyServiceSecret+":"+err.Error())
+	if bindError := viper.BindEnv(keyServiceSecret, envServiceSecret); bindError != nil {
+		errs = append(errs, keyServiceSecret+":"+bindError.Error())
 	}
-	if err := viper.BindEnv(keyLogLevel, envLogLevel); err != nil {
-		errs = append(errs, keyLogLevel+":"+err.Error())
+	if bindError := viper.BindEnv(keyLogLevel, envLogLevel); bindError != nil {
+		errs = append(errs, keyLogLevel+":"+bindError.Error())
 	}
-	if err := viper.BindEnv(keySystemPrompt, envSystemPrompt); err != nil {
-		errs = append(errs, keySystemPrompt+":"+err.Error())
+	if bindError := viper.BindEnv(keySystemPrompt, envSystemPrompt); bindError != nil {
+		errs = append(errs, keySystemPrompt+":"+bindError.Error())
 	}
-	if err := viper.BindEnv(keyWorkers, envWorkers); err != nil {
-		errs = append(errs, keyWorkers+":"+err.Error())
+	if bindError := viper.BindEnv(keyWorkers, envWorkers); bindError != nil {
+		errs = append(errs, keyWorkers+":"+bindError.Error())
 	}
-	if err := viper.BindEnv(keyQueueSize, envQueueSize); err != nil {
-		errs = append(errs, keyQueueSize+":"+err.Error())
+	if bindError := viper.BindEnv(keyQueueSize, envQueueSize); bindError != nil {
+		errs = append(errs, keyQueueSize+":"+bindError.Error())
 	}
-	if err := viper.BindEnv(keyPort, envPort); err != nil {
-		errs = append(errs, keyPort+":"+err.Error())
+	if bindError := viper.BindEnv(keyPort, envPort); bindError != nil {
+		errs = append(errs, keyPort+":"+bindError.Error())
 	}
-	if err := viper.BindEnv(keyRequestTimeoutSeconds, envRequestTimeoutSeconds); err != nil {
-		errs = append(errs, keyRequestTimeoutSeconds+":"+err.Error())
+	if bindError := viper.BindEnv(keyRequestTimeoutSeconds, envRequestTimeoutSeconds); bindError != nil {
+		errs = append(errs, keyRequestTimeoutSeconds+":"+bindError.Error())
 	}
-	if err := viper.BindEnv(keyUpstreamPollTimeoutSeconds, envUpstreamPollTimeoutSeconds); err != nil {
-		errs = append(errs, keyUpstreamPollTimeoutSeconds+":"+err.Error())
+	if bindError := viper.BindEnv(keyUpstreamPollTimeoutSeconds, envUpstreamPollTimeoutSeconds); bindError != nil {
+		errs = append(errs, keyUpstreamPollTimeoutSeconds+":"+bindError.Error())
 	}
-	if err := viper.BindEnv(keyMaxOutputTokens, envMaxOutputTokens); err != nil {
-		errs = append(errs, keyMaxOutputTokens+":"+err.Error())
+	if bindError := viper.BindEnv(keyMaxOutputTokens, envMaxOutputTokens); bindError != nil {
+		errs = append(errs, keyMaxOutputTokens+":"+bindError.Error())
 	}
 	if len(errs) > 0 {
 		return errors.New(strings.Join(errs, "; "))
@@ -204,8 +204,8 @@ func init() {
 	viper.SetEnvPrefix(envPrefix)
 	viper.AutomaticEnv()
 
-	if err := bindOrDie(); err != nil {
-		panic("viper env binding failed: " + err.Error())
+	if bindError := bindOrDie(); bindError != nil {
+		panic("viper env binding failed: " + bindError.Error())
 	}
 
 	rootCmd.Flags().StringVar(
@@ -269,7 +269,7 @@ func init() {
 		"maximum output tokens (env: "+envMaxOutputTokens+")",
 	)
 
-	if err := viper.BindPFlags(rootCmd.Flags()); err != nil {
-		panic("failed to bind flags: " + err.Error())
+	if flagBindError := viper.BindPFlags(rootCmd.Flags()); flagBindError != nil {
+		panic("failed to bind flags: " + flagBindError.Error())
 	}
 }

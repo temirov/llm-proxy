@@ -20,15 +20,15 @@ func TestIntegrationModelSpecSuppression(testingInstance *testing.T) {
 		testingInstance.Run(testCase.name, func(subTest *testing.T) {
 			client, captured := makeHTTPClient(subTest, true)
 			configureProxy(subTest, client)
-			router, err := proxy.BuildRouter(proxy.Configuration{
+			router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 				ServiceSecret: serviceSecretValue,
 				OpenAIKey:     openAIKeyValue,
 				LogLevel:      "debug",
 				WorkerCount:   1,
 				QueueSize:     8,
 			}, newLogger(subTest))
-			if err != nil {
-				subTest.Fatalf("BuildRouter failed: %v", err)
+			if buildRouterError != nil {
+				subTest.Fatalf("BuildRouter failed: %v", buildRouterError)
 			}
 			server := httptest.NewServer(router)
 			subTest.Cleanup(server.Close)

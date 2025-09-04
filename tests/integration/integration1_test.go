@@ -53,15 +53,15 @@ func newIntegrationServer(testingInstance *testing.T, openAIServer *httptest.Ser
 	testingInstance.Cleanup(proxy.ResetResponsesURL)
 	logger, _ := zap.NewDevelopment()
 	testingInstance.Cleanup(func() { _ = logger.Sync() })
-	router, err := proxy.BuildRouter(proxy.Configuration{
+	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: integrationServiceSecret,
 		OpenAIKey:     integrationOpenAIKey,
 		LogLevel:      "debug",
 		WorkerCount:   1,
 		QueueSize:     4,
 	}, logger.Sugar())
-	if err != nil {
-		testingInstance.Fatalf("BuildRouter error: %v", err)
+	if buildRouterError != nil {
+		testingInstance.Fatalf("BuildRouter error: %v", buildRouterError)
 	}
 	server := httptest.NewServer(router)
 	testingInstance.Cleanup(server.Close)
@@ -107,8 +107,8 @@ func TestProxyResponseDelivery(testingInstance *testing.T) {
 				subTest.Fatalf("body=%q want=%q", string(responseBytes), testCase.body)
 			}
 			if testCase.checkTools {
-				mapped, _ := captured.(map[string]any)
-				tools, ok := mapped["tools"].([]any)
+				capturedMap, _ := captured.(map[string]any)
+				tools, ok := capturedMap["tools"].([]any)
 				if !ok || len(tools) == 0 {
 					subTest.Fatalf("tools missing when web_search=1")
 				}

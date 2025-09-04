@@ -92,15 +92,15 @@ func TestClientResponseDelivery(testingInstance *testing.T) {
 		testingInstance.Run(testCase.name, func(subTest *testing.T) {
 			client, captured := makeHTTPClient(subTest, testCase.webSearch)
 			configureProxy(subTest, client)
-			router, err := proxy.BuildRouter(proxy.Configuration{
+			router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 				ServiceSecret: serviceSecretValue,
 				OpenAIKey:     openAIKeyValue,
 				LogLevel:      "debug",
 				WorkerCount:   1,
 				QueueSize:     8,
 			}, newLogger(subTest))
-			if err != nil {
-				subTest.Fatalf("BuildRouter failed: %v", err)
+			if buildRouterError != nil {
+				subTest.Fatalf("BuildRouter failed: %v", buildRouterError)
 			}
 			server := httptest.NewServer(router)
 			subTest.Cleanup(server.Close)
@@ -168,17 +168,17 @@ func TestIntegrationConfiguration(testingInstance *testing.T) {
 	for _, testCase := range testCases {
 		testingInstance.Run(testCase.name, func(subTest *testing.T) {
 			if testCase.expectError != "" {
-				_, err := proxy.BuildRouter(testCase.config, newLogger(subTest))
-				if err == nil || !strings.Contains(err.Error(), testCase.expectError) {
-					subTest.Fatalf("expected %s error, got %v", testCase.expectError, err)
+				_, buildRouterError := proxy.BuildRouter(testCase.config, newLogger(subTest))
+				if buildRouterError == nil || !strings.Contains(buildRouterError.Error(), testCase.expectError) {
+					subTest.Fatalf("expected %s error, got %v", testCase.expectError, buildRouterError)
 				}
 				return
 			}
 			client, _ := makeHTTPClient(subTest, false)
 			configureProxy(subTest, client)
-			router, err := proxy.BuildRouter(testCase.config, newLogger(subTest))
-			if err != nil {
-				subTest.Fatalf("BuildRouter failed: %v", err)
+			router, buildRouterError := proxy.BuildRouter(testCase.config, newLogger(subTest))
+			if buildRouterError != nil {
+				subTest.Fatalf("BuildRouter failed: %v", buildRouterError)
 			}
 			server := httptest.NewServer(router)
 			subTest.Cleanup(server.Close)

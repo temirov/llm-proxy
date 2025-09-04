@@ -30,7 +30,7 @@ func TestChatHandlerReturnsBadRequestForUnknownModel(testFramework *testing.T) {
 	taskQueue := make(chan requestTask, 1)
 	go func() {
 		pendingTask := <-taskQueue
-		pendingTask.reply <- result{err: fmt.Errorf("%w: %s", ErrUnknownModel, pendingTask.model)}
+		pendingTask.reply <- result{requestError: fmt.Errorf("%w: %s", ErrUnknownModel, pendingTask.model)}
 	}()
 
 	loggerInstance, _ := zap.NewDevelopment()

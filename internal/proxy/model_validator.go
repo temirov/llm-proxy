@@ -29,8 +29,8 @@ type modelValidator struct {
 // newModelValidator creates a modelValidator and loads the initial model list.
 func newModelValidator(openAIKey string, structuredLogger *zap.SugaredLogger) (*modelValidator, error) {
 	validator := &modelValidator{apiKey: openAIKey, logger: structuredLogger}
-	if err := validator.refresh(); err != nil {
-		return nil, err
+	if refreshError := validator.refresh(); refreshError != nil {
+		return nil, refreshError
 	}
 	return validator, nil
 }
@@ -72,8 +72,8 @@ func (validator *modelValidator) refresh() error {
 			ID string `json:"id"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(httpResponse.Body).Decode(&payload); err != nil {
-		return err
+	if decodeError := json.NewDecoder(httpResponse.Body).Decode(&payload); decodeError != nil {
+		return decodeError
 	}
 	modelSet := make(map[string]struct{}, len(payload.Data))
 	for _, modelEntry := range payload.Data {
@@ -94,7 +94,7 @@ func (validator *modelValidator) Verify(modelIdentifier string) error {
 	validator.modelMutex.RUnlock()
 
 	if time.Now().After(currentExpiry) || validator.models == nil {
-		if err := validator.refresh(); err != nil {
+		if refreshError := validator.refresh(); refreshError != nil {
 			return errors.New(errorOpenAIModelValidation)
 		}
 		validator.modelMutex.RLock()
