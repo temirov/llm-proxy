@@ -81,7 +81,6 @@ const (
 	logFieldClientIP     = "client_ip"
 	logFieldStatus       = "status"
 	logFieldValue        = "value"
-	logFieldError        = "error"
 	// logFieldExpectedFingerprint identifies the fingerprint of the expected client key.
 	logFieldExpectedFingerprint = "expected_fingerprint"
 

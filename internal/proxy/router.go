@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/temirov/llm-proxy/internal/constants"
 	"go.uber.org/zap"
 )
 
@@ -124,7 +125,7 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 				structuredLogger.Warnw(
 					logEventParseWebSearchParameterFailed,
 					logFieldValue, webSearchQuery,
-					logFieldError, parseError,
+					constants.LogFieldError, parseError,
 				)
 			} else {
 				webSearchEnabled = parsedWebSearch
