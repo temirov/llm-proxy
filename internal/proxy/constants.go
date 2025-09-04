@@ -69,7 +69,6 @@ const (
 
 	logFieldHTTPStatus   = "http_status"
 	logFieldAPIStatus    = "api_status"
-	logFieldLatencyMs    = "latency_ms"
 	logFieldResponseText = "response_text"
 	logFieldMethod       = "method"
 	logFieldPath         = "path"

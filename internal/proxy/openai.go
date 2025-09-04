@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/temirov/llm-proxy/internal/constants"
 	"github.com/temirov/llm-proxy/internal/utils"
 	"go.uber.org/zap"
 )
@@ -128,7 +129,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		logEventOpenAIResponse,
 		logFieldHTTPStatus, statusCode,
 		logFieldAPIStatus, apiStatus,
-		logFieldLatencyMs, latencyMillis,
+		constants.LogFieldLatencyMilliseconds, latencyMillis,
 		logFieldResponseText, outputText,
 	)
 

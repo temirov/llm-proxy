@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/temirov/llm-proxy/internal/constants"
 	"github.com/temirov/llm-proxy/internal/utils"
 	"go.uber.org/zap"
 )
@@ -45,7 +46,7 @@ func requestResponseLogger(structuredLogger *zap.SugaredLogger) gin.HandlerFunc 
 		structuredLogger.Infow(
 			logEventResponseSent,
 			logFieldStatus, responseStatus,
-			logFieldLatencyMs, responseLatencyMillis,
+			constants.LogFieldLatencyMilliseconds, responseLatencyMillis,
 		)
 	}
 }
