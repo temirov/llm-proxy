@@ -3,6 +3,7 @@ module github.com/temirov/llm-proxy
 go 1.24
 
 require (
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/gin-gonic/gin v1.10.1
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
