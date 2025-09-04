@@ -393,7 +393,8 @@ func performResponsesRequest(httpRequest *http.Request, structuredLogger *zap.Su
 		}
 		return nil
 	}
-	retryStrategy := backoff.NewExponentialBackOff()
+	retryStrategy := utils.AcquireExponentialBackoff()
+	defer utils.ReleaseExponentialBackoff(retryStrategy)
 	retryError := backoff.Retry(operation, backoff.WithContext(retryStrategy, httpRequest.Context()))
 	return statusCode, responseBytes, latencyMillis, retryError
 }

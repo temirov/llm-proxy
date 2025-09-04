@@ -3,12 +3,30 @@ package utils
 import (
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/temirov/llm-proxy/internal/constants"
 	"go.uber.org/zap"
 )
+
+var exponentialBackoffPool = sync.Pool{
+	New: func() any {
+		return backoff.NewExponentialBackOff()
+	},
+}
+
+// AcquireExponentialBackoff retrieves a reusable exponential backoff instance.
+func AcquireExponentialBackoff() *backoff.ExponentialBackOff {
+	return exponentialBackoffPool.Get().(*backoff.ExponentialBackOff)
+}
+
+// ReleaseExponentialBackoff resets the backoff and returns it to the pool.
+func ReleaseExponentialBackoff(exponentialBackoff *backoff.ExponentialBackOff) {
+	exponentialBackoff.Reset()
+	exponentialBackoffPool.Put(exponentialBackoff)
+}
 
 // BuildHTTPRequestWithHeaders constructs an HTTP request and applies headers.
 func BuildHTTPRequestWithHeaders(method string, requestURL string, body io.Reader, headers map[string]string) (*http.Request, error) {
@@ -46,7 +64,8 @@ func PerformHTTPRequest(do func(*http.Request) (*http.Response, error), httpRequ
 		return nil
 	}
 
-	exponentialBackoff := backoff.NewExponentialBackOff()
+	exponentialBackoff := AcquireExponentialBackoff()
+	defer ReleaseExponentialBackoff(exponentialBackoff)
 	retryError := backoff.Retry(operation, backoff.WithContext(exponentialBackoff, httpRequest.Context()))
 	latencyMillis := time.Since(startTime).Milliseconds()
 	if retryError != nil {
