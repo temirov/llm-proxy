@@ -32,9 +32,11 @@ func TestIntegration_ResponseDelivered(t *testing.T) {
 	defer openAISrv.Close()
 
 	// Inject URLs + client.
-	proxy.ModelsURL = openAISrv.URL + "/v1/models"
-	proxy.ResponsesURL = openAISrv.URL + "/v1/responses"
+	proxy.SetModelsURL(openAISrv.URL + "/v1/models")
+	proxy.SetResponsesURL(openAISrv.URL + "/v1/responses")
 	proxy.HTTPClient = openAISrv.Client()
+	t.Cleanup(proxy.ResetModelsURL)
+	t.Cleanup(proxy.ResetResponsesURL)
 
 	// Build app router and serve it.
 	logger, _ := zap.NewDevelopment()
@@ -91,9 +93,11 @@ func TestIntegration_ResponseDelivered_WithWebSearch(t *testing.T) {
 	}))
 	defer openAISrv.Close()
 
-	proxy.ModelsURL = openAISrv.URL + "/v1/models"
-	proxy.ResponsesURL = openAISrv.URL + "/v1/responses"
+	proxy.SetModelsURL(openAISrv.URL + "/v1/models")
+	proxy.SetResponsesURL(openAISrv.URL + "/v1/responses")
 	proxy.HTTPClient = openAISrv.Client()
+	t.Cleanup(proxy.ResetModelsURL)
+	t.Cleanup(proxy.ResetResponsesURL)
 
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()

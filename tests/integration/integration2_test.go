@@ -28,7 +28,7 @@ func makeHTTPClient(t *testing.T, wantWebSearch bool) (*http.Client, *map[string
 	return &http.Client{
 		Transport: rt(func(req *http.Request) (*http.Response, error) {
 			switch req.URL.String() {
-			case proxy.ModelsURL:
+			case proxy.ModelsURL():
 				// Return known models so validator passes for tests using gpt-4.1 and gpt-5-mini.
 				body := `{"data":[{"id":"gpt-4.1"},{"id":"gpt-5-mini"}]}`
 				return &http.Response{
@@ -36,7 +36,7 @@ func makeHTTPClient(t *testing.T, wantWebSearch bool) (*http.Client, *map[string
 					Body:       io.NopCloser(strings.NewReader(body)),
 					Header:     make(http.Header),
 				}, nil
-			case proxy.ResponsesURL:
+			case proxy.ResponsesURL():
 				// Capture JSON payload to assert tools presence.
 				if req.Body != nil {
 					buf, _ := io.ReadAll(req.Body)
@@ -73,10 +73,11 @@ func newLogger(t *testing.T) *zap.SugaredLogger {
 func TestIntegration_ResponseDelivered_Plain(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	// Inject stubbed client/URLs.
 	proxy.HTTPClient, _ = makeHTTPClient(t, false)
-	proxy.ModelsURL = "https://mock.local/v1/models"
-	proxy.ResponsesURL = "https://mock.local/v1/responses"
+	proxy.SetModelsURL("https://mock.local/v1/models")
+	proxy.SetResponsesURL("https://mock.local/v1/responses")
+	t.Cleanup(proxy.ResetModelsURL)
+	t.Cleanup(proxy.ResetResponsesURL)
 
 	router, err := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: "sekret",
@@ -117,8 +118,10 @@ func TestIntegration_WebSearch_SendsTool(t *testing.T) {
 
 	client, captured := makeHTTPClient(t, true)
 	proxy.HTTPClient = client
-	proxy.ModelsURL = "https://mock.local/v1/models"
-	proxy.ResponsesURL = "https://mock.local/v1/responses"
+	proxy.SetModelsURL("https://mock.local/v1/models")
+	proxy.SetResponsesURL("https://mock.local/v1/responses")
+	t.Cleanup(proxy.ResetModelsURL)
+	t.Cleanup(proxy.ResetResponsesURL)
 
 	router, err := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: "sekret",
@@ -186,8 +189,10 @@ func TestIntegration_RejectsWrongKeyAndMissingSecrets(t *testing.T) {
 
 	// With correct config, wrong key should 403.
 	proxy.HTTPClient, _ = makeHTTPClient(t, false)
-	proxy.ModelsURL = "https://mock.local/v1/models"
-	proxy.ResponsesURL = "https://mock.local/v1/responses"
+	proxy.SetModelsURL("https://mock.local/v1/models")
+	proxy.SetResponsesURL("https://mock.local/v1/responses")
+	t.Cleanup(proxy.ResetModelsURL)
+	t.Cleanup(proxy.ResetResponsesURL)
 
 	router, err := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: "sekret",

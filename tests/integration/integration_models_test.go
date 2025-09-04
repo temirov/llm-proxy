@@ -17,8 +17,10 @@ func TestIntegration_ModelSpec_SuppressesTemperatureAndTools_ForMini(t *testing.
 
 	client, captured := makeHTTPClient(t, true)
 	proxy.HTTPClient = client
-	proxy.ModelsURL = "https://mock.local/v1/models"
-	proxy.ResponsesURL = "https://mock.local/v1/responses"
+	proxy.SetModelsURL("https://mock.local/v1/models")
+	proxy.SetResponsesURL("https://mock.local/v1/responses")
+	t.Cleanup(proxy.ResetModelsURL)
+	t.Cleanup(proxy.ResetResponsesURL)
 
 	router, err := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: "sekret",

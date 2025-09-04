@@ -24,10 +24,10 @@ func newAdaptiveClient(t *testing.T, mode string) *http.Client {
 	return &http.Client{
 		Transport: adaptiveRoundTripper(func(req *http.Request) (*http.Response, error) {
 			switch req.URL.String() {
-			case proxy.ModelsURL:
+			case proxy.ModelsURL():
 				body := `{"data":[{"id":"gpt-5-mini"}]}`
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
-			case proxy.ResponsesURL:
+			case proxy.ResponsesURL():
 				buf, _ := io.ReadAll(req.Body)
 				req.Body.Close()
 				payload := string(buf)
@@ -61,8 +61,10 @@ func newAdaptiveRouter(t *testing.T, mode string) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	proxy.HTTPClient = newAdaptiveClient(t, mode)
-	proxy.ModelsURL = "https://mock.local/v1/models"
-	proxy.ResponsesURL = "https://mock.local/v1/responses"
+	proxy.SetModelsURL("https://mock.local/v1/models")
+	proxy.SetResponsesURL("https://mock.local/v1/responses")
+	t.Cleanup(proxy.ResetModelsURL)
+	t.Cleanup(proxy.ResetResponsesURL)
 
 	logger, _ := zap.NewDevelopment()
 	t.Cleanup(func() { _ = logger.Sync() })
