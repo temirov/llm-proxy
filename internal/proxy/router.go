@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -155,7 +156,7 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 		select {
 		case outcome := <-replyChannel:
 			if outcome.err != nil {
-				if strings.Contains(outcome.err.Error(), "unknown model") {
+				if errors.Is(outcome.err, ErrUnknownModel) {
 					ginContext.String(http.StatusBadRequest, outcome.err.Error())
 				} else {
 					ginContext.String(http.StatusBadGateway, outcome.err.Error())
