@@ -314,6 +314,7 @@ func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 }
 
 // performResponsesRequest executes the HTTP request and retries when the status code indicates a server error.
+// The retries continue with exponential backoff until the request context deadline is exceeded.
 func performResponsesRequest(httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEvent string) (int, []byte, int64, error) {
 	var statusCode int
 	var responseBytes []byte
@@ -329,7 +330,7 @@ func performResponsesRequest(httpRequest *http.Request, structuredLogger *zap.Su
 		}
 		return nil
 	}
-	retryStrategy := backoff.WithMaxRetries(backoff.NewExponentialBackOff(), ResponsesMaxRetries)
+	retryStrategy := backoff.NewExponentialBackOff()
 	retryError := backoff.Retry(operation, backoff.WithContext(retryStrategy, httpRequest.Context()))
 	return statusCode, responseBytes, latencyMillis, retryError
 }
