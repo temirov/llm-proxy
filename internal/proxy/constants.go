@@ -1,6 +1,12 @@
 package proxy
 
 const (
+	// LogLevelDebug indicates that the application should log debug information.
+	LogLevelDebug = "debug"
+
+	// LogLevelInfo indicates that the application should log informational messages.
+	LogLevelInfo = "info"
+
 	headerAuthorization       = "Authorization"
 	headerContentType         = "Content-Type"
 	headerAccept              = "Accept"

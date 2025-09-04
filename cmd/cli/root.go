@@ -50,8 +50,6 @@ const (
 	envMaxOutputTokens            = "GPT_MAX_OUTPUT_TOKENS"
 
 	quoteCharacters = "\"'"
-	logLevelDebug   = "debug"
-	logLevelInfo    = "info"
 )
 
 var config proxy.Configuration
@@ -88,7 +86,7 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 			config.LogLevel = viper.GetString(keyLogLevel)
 		}
 		if config.LogLevel == "" {
-			config.LogLevel = logLevelInfo
+			config.LogLevel = proxy.LogLevelInfo
 		}
 		if !cmd.Flags().Changed(flagSystemPrompt) {
 			config.SystemPrompt = viper.GetString(keySystemPrompt)
@@ -127,7 +125,7 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 		var logger *zap.Logger
 		var loggerError error
 		switch strings.ToLower(config.LogLevel) {
-		case logLevelDebug:
+		case proxy.LogLevelDebug:
 			logger, loggerError = zap.NewDevelopment()
 		default:
 			logger, loggerError = zap.NewProduction()
