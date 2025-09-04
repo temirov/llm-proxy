@@ -8,8 +8,6 @@ import (
 )
 
 const (
-	contentTypeHeaderKey = "Content-Type"
-	mimeApplicationJSON  = "application/json"
 	minimumExpectedCalls = 2
 )
 
@@ -18,10 +16,10 @@ func TestOpenAIResponsesRetries(testingInstance *testing.T) {
 	responsesAPICallCount := 0
 	openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch httpRequest.URL.Path {
-		case integrationModelsPath:
-			responseWriter.Header().Set(contentTypeHeaderKey, mimeApplicationJSON)
-			_, _ = io.WriteString(responseWriter, integrationModelListBody)
-		case integrationResponsesPath:
+		case modelsPath:
+			responseWriter.Header().Set(headerContentTypeKey, mimeTypeApplicationJSON)
+			_, _ = io.WriteString(responseWriter, modelListBody)
+		case responsesPath:
 			responsesAPICallCount++
 			responseWriter.WriteHeader(http.StatusInternalServerError)
 		default:
@@ -31,7 +29,7 @@ func TestOpenAIResponsesRetries(testingInstance *testing.T) {
 	testingInstance.Cleanup(openAIServer.Close)
 
 	applicationServer := newIntegrationServerWithTimeout(testingInstance, openAIServer, 4)
-	requestURL := applicationServer.URL + "?prompt=ping&key=" + integrationServiceSecret
+	requestURL := applicationServer.URL + "?prompt=ping&key=" + serviceSecretValue
 	httpResponse, requestError := http.Get(requestURL)
 	if requestError != nil {
 		testingInstance.Fatalf("request error: %v", requestError)

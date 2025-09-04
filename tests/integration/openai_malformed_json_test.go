@@ -13,8 +13,6 @@ const (
 	malformedJSONPayload = "invalid"
 	// expectedErrorMessage is the error returned by the proxy when upstream JSON cannot be parsed.
 	expectedErrorMessage = "OpenAI API error"
-	// contentTypeJSON is the HTTP Content-Type header value for JSON payloads.
-	contentTypeJSON = "application/json"
 )
 
 // newMalformedOpenAIServer returns a stub OpenAI server emitting invalid JSON for the responses endpoint.
@@ -22,11 +20,11 @@ func newMalformedOpenAIServer(testingInstance *testing.T) *httptest.Server {
 	testingInstance.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch httpRequest.URL.Path {
-		case integrationModelsPath:
-			responseWriter.Header().Set("Content-Type", contentTypeJSON)
-			_, _ = io.WriteString(responseWriter, integrationModelListBody)
-		case integrationResponsesPath:
-			responseWriter.Header().Set("Content-Type", contentTypeJSON)
+		case modelsPath:
+			responseWriter.Header().Set(headerContentTypeKey, mimeTypeApplicationJSON)
+			_, _ = io.WriteString(responseWriter, modelListBody)
+		case responsesPath:
+			responseWriter.Header().Set(headerContentTypeKey, mimeTypeApplicationJSON)
 			_, _ = io.WriteString(responseWriter, malformedJSONPayload)
 		default:
 			http.NotFound(responseWriter, httpRequest)
@@ -43,7 +41,7 @@ func TestOpenAIMalformedJSON(testingInstance *testing.T) {
 	requestURL, _ := url.Parse(applicationServer.URL)
 	queryValues := requestURL.Query()
 	queryValues.Set(promptQueryParameter, promptValue)
-	queryValues.Set(keyQueryParameter, integrationServiceSecret)
+	queryValues.Set(keyQueryParameter, serviceSecretValue)
 	requestURL.RawQuery = queryValues.Encode()
 	httpResponse, requestError := http.Get(requestURL.String())
 	if requestError != nil {

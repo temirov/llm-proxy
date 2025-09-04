@@ -51,7 +51,7 @@ func TestIntegrationUpstreamRequestTimeoutTriggersGatewayTimeout(testingInstance
 	for _, testCase := range testCases {
 		testingInstance.Run(testCase.name, func(subTest *testing.T) {
 			configureProxy(subTest, makeTimeoutHTTPClient(subTest))
-			router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: "debug", WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: timeoutRequestTimeout}, newLogger(subTest))
+			router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: logLevelDebug, WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: timeoutRequestTimeout}, newLogger(subTest))
 			if buildError != nil {
 				subTest.Fatalf("BuildRouter failed: %v", buildError)
 			}

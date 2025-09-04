@@ -2,79 +2,20 @@ package integration_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/temirov/llm-proxy/internal/proxy"
-	"go.uber.org/zap"
 )
 
 const (
-	availableModelsBody     = `{"data":[{"id":"gpt-4.1"},{"id":"gpt-5-mini"}]}`
 	webSearchQueryParameter = "web_search"
 )
-
-// roundTripperFunc stubs both models and responses endpoints.
-type roundTripperFunc func(httpRequest *http.Request) (*http.Response, error)
-
-func (roundTripper roundTripperFunc) RoundTrip(httpRequest *http.Request) (*http.Response, error) {
-	return roundTripper(httpRequest)
-}
-
-// makeHTTPClient returns a stub HTTP client capturing payloads and returning canned responses.
-func makeHTTPClient(testingInstance *testing.T, wantWebSearch bool) (*http.Client, *map[string]any) {
-	testingInstance.Helper()
-	var captured map[string]any
-	return &http.Client{
-		Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
-			switch httpRequest.URL.String() {
-			case proxy.ModelsURL():
-				body := availableModelsBody
-				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
-			case proxy.ResponsesURL():
-				if httpRequest.Body != nil {
-					buf, _ := io.ReadAll(httpRequest.Body)
-					_ = json.Unmarshal(buf, &captured)
-				}
-				text := integrationOKBody
-				if wantWebSearch {
-					text = integrationSearchBody
-				}
-				body := `{"output_text":"` + text + `"}`
-				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
-			default:
-				testingInstance.Fatalf("unexpected request to %s", httpRequest.URL.String())
-				return nil, nil
-			}
-		}),
-		Timeout: 5 * time.Second,
-	}, &captured
-}
-
-// newLogger constructs a development logger for tests.
-func newLogger(testingInstance *testing.T) *zap.SugaredLogger {
-	testingInstance.Helper()
-	l, _ := zap.NewDevelopment()
-	testingInstance.Cleanup(func() { _ = l.Sync() })
-	return l.Sugar()
-}
-
-// configureProxy sets URLs and the HTTP client for proxy operations.
-func configureProxy(testingInstance *testing.T, client *http.Client) {
-	testingInstance.Helper()
-	proxy.HTTPClient = client
-	proxy.SetModelsURL(mockModelsURL)
-	proxy.SetResponsesURL(mockResponsesURL)
-	testingInstance.Cleanup(proxy.ResetModelsURL)
-	testingInstance.Cleanup(proxy.ResetResponsesURL)
-}
 
 // TestClientResponseDelivery validates responses with and without web search.
 func TestClientResponseDelivery(testingInstance *testing.T) {
@@ -95,7 +36,7 @@ func TestClientResponseDelivery(testingInstance *testing.T) {
 			router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 				ServiceSecret: serviceSecretValue,
 				OpenAIKey:     openAIKeyValue,
-				LogLevel:      "debug",
+				LogLevel:      logLevelDebug,
 				WorkerCount:   1,
 				QueueSize:     8,
 			}, newLogger(subTest))
@@ -160,7 +101,7 @@ func TestIntegrationConfiguration(testingInstance *testing.T) {
 		},
 		{
 			name:           "wrong_key",
-			config:         proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: "debug", WorkerCount: 1, QueueSize: 4},
+			config:         proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: logLevelDebug, WorkerCount: 1, QueueSize: 4},
 			requestKey:     "wrong",
 			expectedStatus: http.StatusForbidden,
 		},

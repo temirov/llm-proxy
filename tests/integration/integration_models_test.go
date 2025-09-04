@@ -23,7 +23,7 @@ func TestIntegrationModelSpecSuppression(testingInstance *testing.T) {
 			router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 				ServiceSecret: serviceSecretValue,
 				OpenAIKey:     openAIKeyValue,
-				LogLevel:      "debug",
+				LogLevel:      logLevelDebug,
 				WorkerCount:   1,
 				QueueSize:     8,
 			}, newLogger(subTest))

@@ -1,98 +1,10 @@
 package integration_test
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"testing"
-
-	"github.com/temirov/llm-proxy/internal/proxy"
-	"go.uber.org/zap"
 )
-
-const (
-	integrationServiceSecret = "sekret"
-	integrationOpenAIKey     = "sk-test"
-	integrationModelsPath    = "/v1/models"
-	integrationResponsesPath = "/v1/responses"
-	integrationModelListBody = `{"object":"list","data":[{"id":"gpt-4.1","object":"model"}]}`
-	integrationOKBody        = "INTEGRATION_OK"
-	integrationSearchBody    = "SEARCH_OK"
-)
-
-// newOpenAIServer returns a stub OpenAI server yielding the provided body and optionally capturing requests.
-func newOpenAIServer(testingInstance *testing.T, responseText string, captureTarget *any) *httptest.Server {
-	testingInstance.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
-		switch httpRequest.URL.Path {
-		case integrationModelsPath:
-			responseWriter.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(responseWriter, integrationModelListBody)
-		case integrationResponsesPath:
-			if captureTarget != nil {
-				body, _ := io.ReadAll(httpRequest.Body)
-				_ = json.Unmarshal(body, captureTarget)
-			}
-			responseWriter.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(responseWriter, `{"output_text":"`+responseText+`"}`)
-		default:
-			http.NotFound(responseWriter, httpRequest)
-		}
-	}))
-	return server
-}
-
-// newIntegrationServer builds the application server pointing at the stub OpenAI server.
-func newIntegrationServer(testingInstance *testing.T, openAIServer *httptest.Server) *httptest.Server {
-	testingInstance.Helper()
-	proxy.SetModelsURL(openAIServer.URL + integrationModelsPath)
-	proxy.SetResponsesURL(openAIServer.URL + integrationResponsesPath)
-	proxy.HTTPClient = openAIServer.Client()
-	testingInstance.Cleanup(proxy.ResetModelsURL)
-	testingInstance.Cleanup(proxy.ResetResponsesURL)
-	logger, _ := zap.NewDevelopment()
-	testingInstance.Cleanup(func() { _ = logger.Sync() })
-	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
-		ServiceSecret: integrationServiceSecret,
-		OpenAIKey:     integrationOpenAIKey,
-		LogLevel:      "debug",
-		WorkerCount:   1,
-		QueueSize:     4,
-	}, logger.Sugar())
-	if buildRouterError != nil {
-		testingInstance.Fatalf("BuildRouter error: %v", buildRouterError)
-	}
-	server := httptest.NewServer(router)
-	testingInstance.Cleanup(server.Close)
-	return server
-}
-
-// newIntegrationServerWithTimeout builds the application server pointing at the stub OpenAI server with a configurable request timeout.
-func newIntegrationServerWithTimeout(testingInstance *testing.T, openAIServer *httptest.Server, requestTimeoutSeconds int) *httptest.Server {
-	testingInstance.Helper()
-	proxy.SetModelsURL(openAIServer.URL + integrationModelsPath)
-	proxy.SetResponsesURL(openAIServer.URL + integrationResponsesPath)
-	proxy.HTTPClient = openAIServer.Client()
-	testingInstance.Cleanup(proxy.ResetModelsURL)
-	testingInstance.Cleanup(proxy.ResetResponsesURL)
-	logger, _ := zap.NewDevelopment()
-	testingInstance.Cleanup(func() { _ = logger.Sync() })
-	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
-		ServiceSecret:         integrationServiceSecret,
-		OpenAIKey:             integrationOpenAIKey,
-		LogLevel:              "debug",
-		WorkerCount:           1,
-		QueueSize:             4,
-		RequestTimeoutSeconds: requestTimeoutSeconds,
-	}, logger.Sugar())
-	if buildRouterError != nil {
-		testingInstance.Fatalf("BuildRouter error: %v", buildRouterError)
-	}
-	server := httptest.NewServer(router)
-	testingInstance.Cleanup(server.Close)
-	return server
-}
 
 // TestProxyResponseDelivery verifies responses with and without web search.
 func TestProxyResponseDelivery(testingInstance *testing.T) {
@@ -115,7 +27,7 @@ func TestProxyResponseDelivery(testingInstance *testing.T) {
 			openAIServer := newOpenAIServer(subTest, testCase.body, captureTarget)
 			subTest.Cleanup(openAIServer.Close)
 			applicationServer := newIntegrationServer(subTest, openAIServer)
-			requestURL := applicationServer.URL + "?prompt=ping&key=" + integrationServiceSecret
+			requestURL := applicationServer.URL + "?prompt=ping&key=" + serviceSecretValue
 			if testCase.webSearch {
 				requestURL += "&web_search=1"
 			}
