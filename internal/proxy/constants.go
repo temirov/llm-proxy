@@ -93,5 +93,8 @@ const (
 	logEventRetryingWithoutParam          = "retrying without parameter"
 	logEventParseWebSearchParameterFailed = "parse web_search parameter failed"
 
+	// ResponsesMaxRetries is the maximum number of retries for server errors from the OpenAI Responses API.
+	ResponsesMaxRetries = 3
+
 	responseRequestAttribute = "request"
 )

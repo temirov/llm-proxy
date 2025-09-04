@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/temirov/llm-proxy/internal/constants"
 	"github.com/temirov/llm-proxy/internal/utils"
 	"go.uber.org/zap"
@@ -78,8 +79,8 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return "", errors.New(errorRequestBuild)
 	}
 
-	statusCode, responseBytes, latencyMillis, transportError := utils.PerformHTTPRequest(HTTPClient.Do, httpRequest, structuredLogger, logEventOpenAIRequestError)
-	if transportError != nil {
+	statusCode, responseBytes, latencyMillis, requestError := performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIRequestError)
+	if requestError != nil {
 		return "", errors.New(errorOpenAIRequest)
 	}
 
@@ -100,8 +101,8 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 			structuredLogger.Errorw(logEventBuildHTTPRequest, constants.LogFieldError, buildRetryError)
 			return "", errors.New(errorRequestBuild)
 		}
-		statusCode, responseBytes, latencyMillis, transportError = utils.PerformHTTPRequest(HTTPClient.Do, retryRequest, structuredLogger, logEventOpenAIRequestError)
-		if transportError != nil {
+		statusCode, responseBytes, latencyMillis, requestError = performResponsesRequest(retryRequest, structuredLogger, logEventOpenAIRequestError)
+		if requestError != nil {
 			return "", errors.New(errorOpenAIRequest)
 		}
 	}
@@ -124,8 +125,8 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 			structuredLogger.Errorw(logEventBuildHTTPRequest, constants.LogFieldError, buildRetryError)
 			return "", errors.New(errorRequestBuild)
 		}
-		statusCode, responseBytes, latencyMillis, transportError = utils.PerformHTTPRequest(HTTPClient.Do, retryRequest, structuredLogger, logEventOpenAIRequestError)
-		if transportError != nil {
+		statusCode, responseBytes, latencyMillis, requestError = performResponsesRequest(retryRequest, structuredLogger, logEventOpenAIRequestError)
+		if requestError != nil {
 			return "", errors.New(errorOpenAIRequest)
 		}
 	}
@@ -213,8 +214,8 @@ func fetchResponseByID(contextToUse context.Context, openAIKey string, responseI
 		return "", false, buildError
 	}
 
-	_, responseBytes, _, transportError := utils.PerformHTTPRequest(HTTPClient.Do, httpRequest, structuredLogger, logEventOpenAIPollError)
-	if transportError != nil {
+	_, responseBytes, _, requestError := performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIPollError)
+	if requestError != nil {
 		return "", false, errors.New(errorOpenAIRequest)
 	}
 
@@ -310,6 +311,27 @@ func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 		return legacy.Choices[0].Message.Content
 	}
 	return ""
+}
+
+// performResponsesRequest executes the HTTP request and retries when the status code indicates a server error.
+func performResponsesRequest(httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEvent string) (int, []byte, int64, error) {
+	var statusCode int
+	var responseBytes []byte
+	var latencyMillis int64
+	operation := func() error {
+		var transportError error
+		statusCode, responseBytes, latencyMillis, transportError = utils.PerformHTTPRequest(HTTPClient.Do, httpRequest, structuredLogger, logEvent)
+		if transportError != nil {
+			return transportError
+		}
+		if statusCode >= http.StatusInternalServerError {
+			return errors.New(errorOpenAIAPI)
+		}
+		return nil
+	}
+	retryStrategy := backoff.WithMaxRetries(backoff.NewExponentialBackOff(), ResponsesMaxRetries)
+	retryError := backoff.Retry(operation, backoff.WithContext(retryStrategy, httpRequest.Context()))
+	return statusCode, responseBytes, latencyMillis, retryError
 }
 
 // buildAuthorizedJSONRequest constructs an HTTP request with authorization and JSON content type headers using the provided context.
