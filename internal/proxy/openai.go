@@ -70,6 +70,8 @@ const (
 	unsupportedToolsParameterToken = "'tools'"
 )
 
+const lineBreak = "\n"
+
 // openAIRequest sends a prompt to the OpenAI responses API and returns the resulting text.
 // It retries without unsupported parameters and polls for completion when needed.
 func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, systemPrompt string, webSearchEnabled bool, structuredLogger *zap.SugaredLogger) (string, error) {
@@ -292,7 +294,7 @@ func getString(container map[string]any, field string) string {
 	return ""
 }
 
-// extractTextFromAny obtains text content from various possible response shapes.
+// extractTextFromAny obtains text content from known response shapes using a single unmarshal pass.
 func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 	if container != nil {
 		if direct, isString := container[jsonFieldOutputText].(string); isString && !utils.IsBlank(direct) {
@@ -304,54 +306,60 @@ func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	}
-	type outputItem struct {
+	type contentContainer struct {
 		Content []contentPart `json:"content"`
 	}
-	var newShape struct {
-		Output []outputItem `json:"output"`
+	var envelope struct {
+		Output   json.RawMessage `json:"output"`
+		Response json.RawMessage `json:"response"`
+		responsesAPIShim
 	}
-	if unmarshalError := json.Unmarshal(rawPayload, &newShape); unmarshalError == nil && len(newShape.Output) > 0 {
-		var textBuilder strings.Builder
-		for _, outputEntry := range newShape.Output {
-			for _, contentEntry := range outputEntry.Content {
-				if !utils.IsBlank(contentEntry.Text) {
-					if textBuilder.Len() > 0 {
-						textBuilder.WriteString("\n")
+	if unmarshalError := json.Unmarshal(rawPayload, &envelope); unmarshalError != nil {
+		return ""
+	}
+
+	if len(envelope.Output) > 0 {
+		var outputItems []contentContainer
+		if unmarshalError := json.Unmarshal(envelope.Output, &outputItems); unmarshalError == nil && len(outputItems) > 0 {
+			var textBuilder strings.Builder
+			for _, outputEntry := range outputItems {
+				for _, contentEntry := range outputEntry.Content {
+					if !utils.IsBlank(contentEntry.Text) {
+						if textBuilder.Len() > 0 {
+							textBuilder.WriteString(lineBreak)
+						}
+						textBuilder.WriteString(contentEntry.Text)
 					}
-					textBuilder.WriteString(contentEntry.Text)
 				}
 			}
-		}
-		if textBuilder.Len() > 0 {
-			return textBuilder.String()
+			if textBuilder.Len() > 0 {
+				return textBuilder.String()
+			}
 		}
 	}
 
-	var altShape struct {
-		Response []struct {
-			Content []contentPart `json:"content"`
-		} `json:"response"`
-	}
-	if unmarshalError := json.Unmarshal(rawPayload, &altShape); unmarshalError == nil && len(altShape.Response) > 0 {
-		var textBuilder strings.Builder
-		for _, responseEntry := range altShape.Response {
-			for _, contentEntry := range responseEntry.Content {
-				if !utils.IsBlank(contentEntry.Text) {
-					if textBuilder.Len() > 0 {
-						textBuilder.WriteString("\n")
+	if len(envelope.Response) > 0 {
+		var responseItems []contentContainer
+		if unmarshalError := json.Unmarshal(envelope.Response, &responseItems); unmarshalError == nil && len(responseItems) > 0 {
+			var textBuilder strings.Builder
+			for _, responseEntry := range responseItems {
+				for _, contentEntry := range responseEntry.Content {
+					if !utils.IsBlank(contentEntry.Text) {
+						if textBuilder.Len() > 0 {
+							textBuilder.WriteString(lineBreak)
+						}
+						textBuilder.WriteString(contentEntry.Text)
 					}
-					textBuilder.WriteString(contentEntry.Text)
 				}
 			}
-		}
-		if textBuilder.Len() > 0 {
-			return textBuilder.String()
+			if textBuilder.Len() > 0 {
+				return textBuilder.String()
+			}
 		}
 	}
 
-	var legacy responsesAPIShim
-	if unmarshalError := json.Unmarshal(rawPayload, &legacy); unmarshalError == nil && len(legacy.Choices) > 0 {
-		return legacy.Choices[0].Message.Content
+	if len(envelope.Choices) > 0 {
+		return envelope.Choices[0].Message.Content
 	}
 	return ""
 }
