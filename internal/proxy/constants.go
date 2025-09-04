@@ -13,6 +13,8 @@ const (
 	queryParameterSystemPrompt = "system_prompt"
 	queryParameterFormat       = "format"
 
+	redactedPlaceholder = "***REDACTED***"
+
 	mimeApplicationJSON = "application/json"
 	mimeApplicationXML  = "application/xml"
 	mimeTextXML         = "text/xml"
