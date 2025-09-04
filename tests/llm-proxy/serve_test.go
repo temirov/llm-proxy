@@ -13,16 +13,18 @@ import (
 	"go.uber.org/zap"
 )
 
-type roundTripperFunc func(req *http.Request) (*http.Response, error)
+type roundTripperFunc func(httpRequest *http.Request) (*http.Response, error)
 
-func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+func (roundTripper roundTripperFunc) RoundTrip(httpRequest *http.Request) (*http.Response, error) {
+	return roundTripper(httpRequest)
+}
 
 // newRouterWithStubbedOpenAI returns a router that uses a stubbed OpenAI backend.
-func newRouterWithStubbedOpenAI(t *testing.T, modelsBody, responsesBody string, workerCount, queueSize, requestTimeoutSeconds int) *gin.Engine {
-	t.Helper()
+func newRouterWithStubbedOpenAI(testingInstance *testing.T, modelsBody, responsesBody string, workerCount, queueSize, requestTimeoutSeconds int) *gin.Engine {
+	testingInstance.Helper()
 
 	originalClient := proxy.HTTPClient
-	t.Cleanup(func() { proxy.HTTPClient = originalClient })
+	testingInstance.Cleanup(func() { proxy.HTTPClient = originalClient })
 
 	proxy.HTTPClient = &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
@@ -61,21 +63,22 @@ func newRouterWithStubbedOpenAI(t *testing.T, modelsBody, responsesBody string, 
 		RequestTimeoutSeconds: requestTimeoutSeconds,
 	}, logger.Sugar())
 	if buildError != nil {
-		t.Fatalf("BuildRouter error: %v", buildError)
+		testingInstance.Fatalf("BuildRouter error: %v", buildError)
 	}
 	return router
 }
 
-func TestEndpoint_Empty200TreatedAsError(t *testing.T) {
+// TestEndpoint_Empty200TreatedAsError ensures that empty successful responses are treated as errors.
+func TestEndpoint_Empty200TreatedAsError(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	proxy.SetModelsURL("https://mock.local/v1/models")
 	proxy.SetResponsesURL("https://mock.local/v1/responses")
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	testingInstance.Cleanup(proxy.ResetModelsURL)
+	testingInstance.Cleanup(proxy.ResetResponsesURL)
 
 	router := newRouterWithStubbedOpenAI(
-		t,
+		testingInstance,
 		`{"data":[{"id":"gpt-4.1"}]}`,
 		`{"output":[]}`,
 		1,
@@ -84,30 +87,31 @@ func TestEndpoint_Empty200TreatedAsError(t *testing.T) {
 	)
 
 	server := httptest.NewServer(router)
-	t.Cleanup(server.Close)
+	testingInstance.Cleanup(server.Close)
 
 	request, _ := http.NewRequest("GET", server.URL+"/?prompt=test&key=sekret", nil)
 	response, requestError := http.DefaultClient.Do(request)
 	if requestError != nil {
-		t.Fatalf("request failed: %v", requestError)
+		testingInstance.Fatalf("request failed: %v", requestError)
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusBadGateway {
-		t.Fatalf("status=%d want=%d", response.StatusCode, http.StatusBadGateway)
+		testingInstance.Fatalf("status=%d want=%d", response.StatusCode, http.StatusBadGateway)
 	}
 }
 
-func TestEndpoint_RespectsAcceptHeaderCSV(t *testing.T) {
+// TestEndpoint_RespectsAcceptHeaderCSV validates CSV responses when the Accept header requests text/csv.
+func TestEndpoint_RespectsAcceptHeaderCSV(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	proxy.SetModelsURL("https://mock.local/v1/models")
 	proxy.SetResponsesURL("https://mock.local/v1/responses")
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	testingInstance.Cleanup(proxy.ResetModelsURL)
+	testingInstance.Cleanup(proxy.ResetResponsesURL)
 
 	router := newRouterWithStubbedOpenAI(
-		t,
+		testingInstance,
 		`{"data":[{"id":"gpt-4.1"}]}`,
 		`{"output_text":"Hello, world!"}`,
 		1,
@@ -116,35 +120,36 @@ func TestEndpoint_RespectsAcceptHeaderCSV(t *testing.T) {
 	)
 
 	server := httptest.NewServer(router)
-	t.Cleanup(server.Close)
+	testingInstance.Cleanup(server.Close)
 
 	request, _ := http.NewRequest("GET", server.URL+"/?prompt=anything&key=sekret", nil)
 	request.Header.Set("Accept", "text/csv")
 	response, requestError := http.DefaultClient.Do(request)
 	if requestError != nil {
-		t.Fatalf("request failed: %v", requestError)
+		testingInstance.Fatalf("request failed: %v", requestError)
 	}
 	defer response.Body.Close()
 
 	if contentType := response.Header.Get("Content-Type"); contentType != "text/csv" {
-		t.Fatalf("content-type=%q want=%q", contentType, "text/csv")
+		testingInstance.Fatalf("content-type=%q want=%q", contentType, "text/csv")
 	}
 	responseBody, _ := io.ReadAll(response.Body)
 	if body := string(responseBody); body != "\"Hello, world!\"\n" {
-		t.Fatalf("body=%q want=%q", body, "\"Hello, world!\"\n")
+		testingInstance.Fatalf("body=%q want=%q", body, "\"Hello, world!\"\n")
 	}
 }
 
-func TestEndpoint_ReturnsServiceUnavailableWhenQueueFull(t *testing.T) {
+// TestEndpoint_ReturnsServiceUnavailableWhenQueueFull confirms that a full queue results in an HTTP 503 status code.
+func TestEndpoint_ReturnsServiceUnavailableWhenQueueFull(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	proxy.SetModelsURL("https://mock.local/v1/models")
 	proxy.SetResponsesURL("https://mock.local/v1/responses")
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	testingInstance.Cleanup(proxy.ResetModelsURL)
+	testingInstance.Cleanup(proxy.ResetResponsesURL)
 
 	router := newRouterWithStubbedOpenAI(
-		t,
+		testingInstance,
 		`{"data":[{"id":"gpt-4.1"}]}`,
 		`{"output_text":"queued"}`,
 		0,
@@ -153,7 +158,7 @@ func TestEndpoint_ReturnsServiceUnavailableWhenQueueFull(t *testing.T) {
 	)
 
 	server := httptest.NewServer(router)
-	t.Cleanup(server.Close)
+	testingInstance.Cleanup(server.Close)
 
 	firstRequest, _ := http.NewRequest("GET", server.URL+"/?prompt=first&key=sekret", nil)
 	go http.DefaultClient.Do(firstRequest)
@@ -162,16 +167,16 @@ func TestEndpoint_ReturnsServiceUnavailableWhenQueueFull(t *testing.T) {
 	secondRequest, _ := http.NewRequest("GET", server.URL+"/?prompt=second&key=sekret", nil)
 	secondResponse, secondRequestError := http.DefaultClient.Do(secondRequest)
 	if secondRequestError != nil {
-		t.Fatalf("request failed: %v", secondRequestError)
+		testingInstance.Fatalf("request failed: %v", secondRequestError)
 	}
 	defer secondResponse.Body.Close()
 
 	if secondResponse.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("status=%d want=%d", secondResponse.StatusCode, http.StatusServiceUnavailable)
+		testingInstance.Fatalf("status=%d want=%d", secondResponse.StatusCode, http.StatusServiceUnavailable)
 	}
 	responseBody, _ := io.ReadAll(secondResponse.Body)
 	const expectedBody = "request queue full"
 	if strings.TrimSpace(string(responseBody)) != expectedBody {
-		t.Fatalf("body=%q want=%q", string(responseBody), expectedBody)
+		testingInstance.Fatalf("body=%q want=%q", string(responseBody), expectedBody)
 	}
 }

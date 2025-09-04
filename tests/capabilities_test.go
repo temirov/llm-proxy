@@ -22,7 +22,8 @@ const (
 	logLevel         = "debug"
 )
 
-func TestIntegration_WebSearch_UnsupportedModel_Returns400(t *testing.T) {
+// TestIntegration_WebSearch_UnsupportedModel_Returns400 verifies that requesting web search for an unsupported model returns an HTTP 400 status code.
+func TestIntegration_WebSearch_UnsupportedModel_Returns400(testingInstance *testing.T) {
 	openAISrv := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch {
 		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
@@ -38,8 +39,8 @@ func TestIntegration_WebSearch_UnsupportedModel_Returns400(t *testing.T) {
 	proxy.SetModelsURL(openAISrv.URL + "/v1/models")
 	proxy.SetResponsesURL(openAISrv.URL + "/v1/responses")
 	proxy.HTTPClient = openAISrv.Client()
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	testingInstance.Cleanup(proxy.ResetModelsURL)
+	testingInstance.Cleanup(proxy.ResetResponsesURL)
 
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
@@ -52,29 +53,30 @@ func TestIntegration_WebSearch_UnsupportedModel_Returns400(t *testing.T) {
 		QueueSize:     4,
 	}, logger.Sugar())
 	if err != nil {
-		t.Fatalf("BuildRouter error: %v", err)
+		testingInstance.Fatalf("BuildRouter error: %v", err)
 	}
 
 	app := httptest.NewServer(router)
 	defer app.Close()
 
-	req, _ := http.NewRequest("GET", app.URL+"/?prompt=x&key="+serviceSecret+"&model="+modelIDGPT4oMini+"&web_search=1", nil)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
+	httpRequest, _ := http.NewRequest("GET", app.URL+"/?prompt=x&key="+serviceSecret+"&model="+modelIDGPT4oMini+"&web_search=1", nil)
+	httpResponse, requestError := http.DefaultClient.Do(httpRequest)
+	if requestError != nil {
+		testingInstance.Fatalf("request failed: %v", requestError)
 	}
-	defer res.Body.Close()
+	defer httpResponse.Body.Close()
 
-	if res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status=%d want=%d", res.StatusCode, http.StatusBadRequest)
+	if httpResponse.StatusCode != http.StatusBadRequest {
+		testingInstance.Fatalf("status=%d want=%d", httpResponse.StatusCode, http.StatusBadRequest)
 	}
-	body, _ := io.ReadAll(res.Body)
+	body, _ := io.ReadAll(httpResponse.Body)
 	if !strings.Contains(string(body), "web_search is not supported") {
-		t.Fatalf("body=%q missing capability message", string(body))
+		testingInstance.Fatalf("body=%q missing capability message", string(body))
 	}
 }
 
-func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(t *testing.T) {
+// TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature confirms that requests retry without temperature for models that do not support the parameter.
+func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(testingInstance *testing.T) {
 	var observed any
 
 	openAISrv := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
@@ -99,8 +101,8 @@ func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(t *te
 	proxy.SetModelsURL(openAISrv.URL + "/v1/models")
 	proxy.SetResponsesURL(openAISrv.URL + "/v1/responses")
 	proxy.HTTPClient = openAISrv.Client()
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	testingInstance.Cleanup(proxy.ResetModelsURL)
+	testingInstance.Cleanup(proxy.ResetResponsesURL)
 
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
@@ -113,24 +115,24 @@ func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(t *te
 		QueueSize:     4,
 	}, logger.Sugar())
 	if err != nil {
-		t.Fatalf("BuildRouter error: %v", err)
+		testingInstance.Fatalf("BuildRouter error: %v", err)
 	}
 
 	app := httptest.NewServer(router)
 	defer app.Close()
 
-	res, err := http.Get(app.URL + "/?prompt=hello&key=" + serviceSecret + "&model=" + modelIDGPT5Mini)
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
+	httpResponse, requestError := http.Get(app.URL + "/?prompt=hello&key=" + serviceSecret + "&model=" + modelIDGPT5Mini)
+	if requestError != nil {
+		testingInstance.Fatalf("request failed: %v", requestError)
 	}
-	defer res.Body.Close()
+	defer httpResponse.Body.Close()
 
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		t.Fatalf("status=%d body=%s", res.StatusCode, string(b))
+	if httpResponse.StatusCode != http.StatusOK {
+		responseBody, _ := io.ReadAll(httpResponse.Body)
+		testingInstance.Fatalf("status=%d body=%s", httpResponse.StatusCode, string(responseBody))
 	}
-	b, _ := io.ReadAll(res.Body)
-	if strings.TrimSpace(string(b)) != "TEMPLESS_OK" {
-		t.Fatalf("body=%q want %q", string(b), "TEMPLESS_OK")
+	responseBytes, _ := io.ReadAll(httpResponse.Body)
+	if strings.TrimSpace(string(responseBytes)) != "TEMPLESS_OK" {
+		testingInstance.Fatalf("body=%q want %q", string(responseBytes), "TEMPLESS_OK")
 	}
 }
