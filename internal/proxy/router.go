@@ -50,14 +50,14 @@ func BuildRouter(config Configuration, structuredLogger *zap.SugaredLogger) (*gi
 		return nil, validatorError
 	}
 
-	if strings.ToLower(config.LogLevel) == "debug" {
+	if strings.ToLower(config.LogLevel) == LogLevelDebug {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	router := gin.New()
-	if lvl := strings.ToLower(config.LogLevel); lvl == "info" || lvl == "debug" {
+	if lvl := strings.ToLower(config.LogLevel); lvl == LogLevelInfo || lvl == LogLevelDebug {
 		router.Use(requestResponseLogger(structuredLogger))
 	}
 
