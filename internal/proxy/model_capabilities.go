@@ -13,6 +13,9 @@ const (
 	modelPrefixGPT5Mini  = "gpt-5-mini"
 )
 
+// modelNameSeparator marks the boundary between model prefix and variant.
+const modelNameSeparator = "-"
+
 // modelCapabilities describes the features supported by a model.
 type modelCapabilities struct {
 	apiFlavor           string
@@ -30,26 +33,41 @@ func (capabilities modelCapabilities) SupportsTemperature() bool {
 	return capabilities.supportsTemperature
 }
 
-// modelCapabilityPattern maps a model prefix to its capabilities.
-type modelCapabilityPattern struct {
-	prefix       string
-	capabilities modelCapabilities
-}
-
-// capabilitiesTable defines known capabilities for recognized model prefixes.
-var capabilitiesTable = []modelCapabilityPattern{
-	{prefix: modelPrefixGPT4oMini, capabilities: modelCapabilities{apiFlavor: apiFlavorResponses, supportsWebSearch: false, supportsTemperature: true}},
-	{prefix: modelPrefixGPT4o, capabilities: modelCapabilities{apiFlavor: apiFlavorResponses, supportsWebSearch: true, supportsTemperature: true}},
-	{prefix: modelPrefixGPT41, capabilities: modelCapabilities{apiFlavor: apiFlavorResponses, supportsWebSearch: true, supportsTemperature: true}},
-	{prefix: modelPrefixGPT5Mini, capabilities: modelCapabilities{apiFlavor: apiFlavorResponses, supportsWebSearch: false, supportsTemperature: false}},
+// capabilitiesByPrefix defines known capabilities for recognized model prefixes.
+var capabilitiesByPrefix = map[string]modelCapabilities{
+	modelPrefixGPT4oMini: {
+		apiFlavor:           apiFlavorResponses,
+		supportsWebSearch:   false,
+		supportsTemperature: true,
+	},
+	modelPrefixGPT4o: {
+		apiFlavor:           apiFlavorResponses,
+		supportsWebSearch:   true,
+		supportsTemperature: true,
+	},
+	modelPrefixGPT41: {
+		apiFlavor:           apiFlavorResponses,
+		supportsWebSearch:   true,
+		supportsTemperature: true,
+	},
+	modelPrefixGPT5Mini: {
+		apiFlavor:           apiFlavorResponses,
+		supportsWebSearch:   false,
+		supportsTemperature: false,
+	},
 }
 
 // lookupModelCapabilities finds capabilities for the given model identifier.
 func lookupModelCapabilities(modelIdentifier string) (modelCapabilities, bool) {
-	for _, entry := range capabilitiesTable {
-		if modelIdentifier == entry.prefix || strings.HasPrefix(modelIdentifier, entry.prefix) {
-			return entry.capabilities, true
+	for {
+		if capabilities, found := capabilitiesByPrefix[modelIdentifier]; found {
+			return capabilities, true
 		}
+		lastSeparatorIndex := strings.LastIndex(modelIdentifier, modelNameSeparator)
+		if lastSeparatorIndex == -1 {
+			break
+		}
+		modelIdentifier = modelIdentifier[:lastSeparatorIndex]
 	}
 	return modelCapabilities{}, false
 }
