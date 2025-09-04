@@ -42,6 +42,27 @@ type responsesAPIShim struct {
 	} `json:"choices"`
 }
 
+// Tool represents a tool available to the model.
+type Tool struct {
+	Type string `json:"type"`
+}
+
+// OpenAIRequest defines the payload for the OpenAI responses API.
+type OpenAIRequest struct {
+	// Model is the model identifier.
+	Model string `json:"model"`
+	// Input is the list of messages forming the conversation.
+	Input []map[string]string `json:"input"`
+	// MaxOutputTokens limits the number of tokens generated in the response.
+	MaxOutputTokens int `json:"max_output_tokens"`
+	// Temperature adjusts the randomness of the response.
+	Temperature *float64 `json:"temperature,omitempty"`
+	// Tools lists the tools available to the model.
+	Tools []Tool `json:"tools,omitempty"`
+	// ToolChoice selects a tool to use for the request.
+	ToolChoice string `json:"tool_choice,omitempty"`
+}
+
 const (
 	// unsupportedTemperatureParameterToken marks an error response mentioning the temperature parameter.
 	unsupportedTemperatureParameterToken = "'temperature'"
@@ -59,17 +80,18 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 
 	modelCapabilities := ResolveModelSpecification(modelIdentifier)
 
-	requestPayload := map[string]any{
-		keyModel:           modelIdentifier,
-		keyInput:           messageList,
-		keyMaxOutputTokens: maxOutputTokens,
+	requestPayload := OpenAIRequest{
+		Model:           modelIdentifier,
+		Input:           messageList,
+		MaxOutputTokens: maxOutputTokens,
 	}
 	if modelCapabilities.SupportsTemperature() {
-		requestPayload[keyTemperature] = 0.7
+		temperature := 0.7
+		requestPayload.Temperature = &temperature
 	}
 	if webSearchEnabled && modelCapabilities.SupportsWebSearch() {
-		requestPayload[keyTools] = []any{map[string]any{keyType: toolTypeWebSearch}}
-		requestPayload[keyToolChoice] = keyAuto
+		requestPayload.Tools = []Tool{{Type: toolTypeWebSearch}}
+		requestPayload.ToolChoice = keyAuto
 	}
 
 	payloadBytes, marshalError := json.Marshal(requestPayload)
@@ -93,9 +115,9 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 
 	if statusCode >= http.StatusBadRequest &&
 		bytes.Contains(responseBytes, []byte(unsupportedTemperatureParameterToken)) &&
-		requestPayload[keyTemperature] != nil {
+		requestPayload.Temperature != nil {
 		structuredLogger.Infow(logEventRetryingWithoutParam, "parameter", keyTemperature)
-		delete(requestPayload, keyTemperature)
+		requestPayload.Temperature = nil
 		retryPayloadBytes, marshalRetryError := json.Marshal(requestPayload)
 		if marshalRetryError != nil {
 			structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalRetryError)
@@ -116,10 +138,10 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 
 	if statusCode >= http.StatusBadRequest &&
 		bytes.Contains(responseBytes, []byte(unsupportedToolsParameterToken)) &&
-		requestPayload[keyTools] != nil {
+		len(requestPayload.Tools) > 0 {
 		structuredLogger.Infow(logEventRetryingWithoutParam, "parameter", keyTools)
-		delete(requestPayload, keyTools)
-		delete(requestPayload, keyToolChoice)
+		requestPayload.Tools = nil
+		requestPayload.ToolChoice = ""
 		retryPayloadBytes, marshalRetryError := json.Marshal(requestPayload)
 		if marshalRetryError != nil {
 			structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalRetryError)
