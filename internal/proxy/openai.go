@@ -15,11 +15,13 @@ import (
 	"go.uber.org/zap"
 )
 
+// HTTPDoer executes HTTP requests, allowing the proxy to abstract the underlying HTTP client.
 type HTTPDoer interface {
 	Do(httpRequest *http.Request) (*http.Response, error)
 }
 
 var (
+	// HTTPClient is the default HTTPDoer implementation that delegates to http.DefaultClient.
 	HTTPClient          HTTPDoer = http.DefaultClient
 	maxOutputTokens              = DefaultMaxOutputTokens
 	upstreamPollTimeout time.Duration
