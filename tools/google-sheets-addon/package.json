@@ -1,0 +1,18 @@
+{
+  "name": "llm-sheets-addon",
+  "private": true,
+  "devDependencies": {
+    "@google/clasp": "^2.4.2"
+  },
+  "scripts": {
+    "login": "clasp login",
+    "push:dev": "clasp push --rootDir src --force --json --manifest src/appsscript.json --clasp_json .clasp.dev.json",
+    "push:prod": "clasp push --rootDir src --force --json --manifest src/appsscript.json --clasp_json .clasp.prod.json",
+    "version:dev": "clasp version --clasp_json .clasp.dev.json \"bump\"",
+    "version:prod": "clasp version --clasp_json .clasp.prod.json \"bump\"",
+    "deploy:dev": "clasp deploy --clasp_json .clasp.dev.json --description \"dev\"",
+    "deploy:prod": "clasp deploy --clasp_json .clasp.prod.json --description \"prod\"",
+    "pull:dev": "clasp pull --rootDir src --clasp_json .clasp.dev.json",
+    "pull:prod": "clasp pull --rootDir src --clasp_json .clasp.prod.json"
+  }
+}
