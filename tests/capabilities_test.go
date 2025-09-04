@@ -23,14 +23,14 @@ const (
 )
 
 func TestIntegration_WebSearch_UnsupportedModel_Returns400(t *testing.T) {
-	openAISrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	openAISrv := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch {
-		case strings.HasSuffix(r.URL.Path, "/v1/models"):
-			io.WriteString(w, `{"data":[{"id":"`+modelIDGPT4oMini+`"},{"id":"`+modelIDGPT4o+`"}]}`)
-		case strings.HasSuffix(r.URL.Path, "/v1/responses"):
-			io.WriteString(w, `{"output_text":"SHOULD_NOT_BE_CALLED"}`)
+		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
+			io.WriteString(responseWriter, `{"data":[{"id":"`+modelIDGPT4oMini+`"},{"id":"`+modelIDGPT4o+`"}]}`)
+		case strings.HasSuffix(httpRequest.URL.Path, "/v1/responses"):
+			io.WriteString(responseWriter, `{"output_text":"SHOULD_NOT_BE_CALLED"}`)
 		default:
-			http.NotFound(w, r)
+			http.NotFound(responseWriter, httpRequest)
 		}
 	}))
 	defer openAISrv.Close()
@@ -77,21 +77,21 @@ func TestIntegration_WebSearch_UnsupportedModel_Returns400(t *testing.T) {
 func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(t *testing.T) {
 	var observed any
 
-	openAISrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	openAISrv := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch {
-		case strings.HasSuffix(r.URL.Path, "/v1/models"):
-			io.WriteString(w, `{"data":[{"id":"`+modelIDGPT5Mini+`"}]}`)
-		case strings.HasSuffix(r.URL.Path, "/v1/responses"):
-			body, _ := io.ReadAll(r.Body)
+		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
+			io.WriteString(responseWriter, `{"data":[{"id":"`+modelIDGPT5Mini+`"}]}`)
+		case strings.HasSuffix(httpRequest.URL.Path, "/v1/responses"):
+			body, _ := io.ReadAll(httpRequest.Body)
 			_ = json.Unmarshal(body, &observed)
 			if strings.Contains(string(body), `"temperature"`) {
-				w.WriteHeader(http.StatusBadRequest)
-				io.WriteString(w, `{"error":{"message":"Unsupported parameter: 'temperature'"}}`)
+				responseWriter.WriteHeader(http.StatusBadRequest)
+				io.WriteString(responseWriter, `{"error":{"message":"Unsupported parameter: 'temperature'"}}`)
 				return
 			}
-			io.WriteString(w, `{"output_text":"TEMPLESS_OK"}`)
+			io.WriteString(responseWriter, `{"output_text":"TEMPLESS_OK"}`)
 		default:
-			http.NotFound(w, r)
+			http.NotFound(responseWriter, httpRequest)
 		}
 	}))
 	defer openAISrv.Close()

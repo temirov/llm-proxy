@@ -14,18 +14,18 @@ import (
 
 func TestIntegration_ResponseDelivered(t *testing.T) {
 	// Fake upstream that serves /v1/models and /v1/responses.
-	openAISrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	openAISrv := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch {
-		case strings.HasSuffix(r.URL.Path, "/v1/models"):
-			w.Header().Set("Content-Type", "application/json")
-			io.WriteString(w, `{"object":"list","data":[{"id":"gpt-4.1","object":"model"}]}`)
+		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
+			responseWriter.Header().Set("Content-Type", "application/json")
+			io.WriteString(responseWriter, `{"object":"list","data":[{"id":"gpt-4.1","object":"model"}]}`)
 			return
-		case strings.HasSuffix(r.URL.Path, "/v1/responses"):
-			w.Header().Set("Content-Type", "application/json")
-			io.WriteString(w, `{"output_text":"INTEGRATION_OK"}`)
+		case strings.HasSuffix(httpRequest.URL.Path, "/v1/responses"):
+			responseWriter.Header().Set("Content-Type", "application/json")
+			io.WriteString(responseWriter, `{"output_text":"INTEGRATION_OK"}`)
 			return
 		default:
-			http.NotFound(w, r)
+			http.NotFound(responseWriter, httpRequest)
 			return
 		}
 	}))
@@ -74,20 +74,20 @@ func TestIntegration_ResponseDelivered(t *testing.T) {
 func TestIntegration_ResponseDelivered_WithWebSearch(t *testing.T) {
 	var captured any
 
-	openAISrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	openAISrv := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch {
-		case strings.HasSuffix(r.URL.Path, "/v1/models"):
-			w.Header().Set("Content-Type", "application/json")
-			io.WriteString(w, `{"object":"list","data":[{"id":"gpt-4.1","object":"model"}]}`)
+		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
+			responseWriter.Header().Set("Content-Type", "application/json")
+			io.WriteString(responseWriter, `{"object":"list","data":[{"id":"gpt-4.1","object":"model"}]}`)
 			return
-		case strings.HasSuffix(r.URL.Path, "/v1/responses"):
-			body, _ := io.ReadAll(r.Body)
+		case strings.HasSuffix(httpRequest.URL.Path, "/v1/responses"):
+			body, _ := io.ReadAll(httpRequest.Body)
 			_ = json.Unmarshal(body, &captured)
-			w.Header().Set("Content-Type", "application/json")
-			io.WriteString(w, `{"output_text":"SEARCH_OK"}`)
+			responseWriter.Header().Set("Content-Type", "application/json")
+			io.WriteString(responseWriter, `{"output_text":"SEARCH_OK"}`)
 			return
 		default:
-			http.NotFound(w, r)
+			http.NotFound(responseWriter, httpRequest)
 			return
 		}
 	}))
