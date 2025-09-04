@@ -13,14 +13,17 @@ import (
 	"go.uber.org/zap"
 )
 
+// modelValidator caches known model identifiers from the upstream service.
 type modelValidator struct {
-	mu     sync.RWMutex
-	models map[string]struct{}
-	expiry time.Time
-	apiKey string
-	logger *zap.SugaredLogger
+	// modelMutex guards access to models and expiry.
+	modelMutex sync.RWMutex
+	models     map[string]struct{}
+	expiry     time.Time
+	apiKey     string
+	logger     *zap.SugaredLogger
 }
 
+// newModelValidator creates a modelValidator and loads the initial model list.
 func newModelValidator(openAIKey string, structuredLogger *zap.SugaredLogger) (*modelValidator, error) {
 	validator := &modelValidator{apiKey: openAIKey, logger: structuredLogger}
 	if err := validator.refresh(); err != nil {
@@ -29,6 +32,7 @@ func newModelValidator(openAIKey string, structuredLogger *zap.SugaredLogger) (*
 	return validator, nil
 }
 
+// refresh retrieves the model list from OpenAI and updates the cache.
 func (validator *modelValidator) refresh() error {
 	httpRequest, requestError := http.NewRequest(http.MethodGet, modelsURL, nil)
 	if requestError != nil {
@@ -66,26 +70,27 @@ func (validator *modelValidator) refresh() error {
 	for _, modelEntry := range payload.Data {
 		modelSet[modelEntry.ID] = struct{}{}
 	}
-	validator.mu.Lock()
+	validator.modelMutex.Lock()
 	validator.models = modelSet
 	validator.expiry = time.Now().Add(modelsCacheTTL)
-	validator.mu.Unlock()
+	validator.modelMutex.Unlock()
 	return nil
 }
 
+// Verify checks whether the provided model identifier is known.
 func (validator *modelValidator) Verify(modelIdentifier string) error {
-	validator.mu.RLock()
+	validator.modelMutex.RLock()
 	currentExpiry := validator.expiry
 	_, known := validator.models[modelIdentifier]
-	validator.mu.RUnlock()
+	validator.modelMutex.RUnlock()
 
 	if time.Now().After(currentExpiry) || validator.models == nil {
 		if err := validator.refresh(); err != nil {
 			return errors.New(errorOpenAIModelValidation)
 		}
-		validator.mu.RLock()
+		validator.modelMutex.RLock()
 		_, known = validator.models[modelIdentifier]
-		validator.mu.RUnlock()
+		validator.modelMutex.RUnlock()
 	}
 	if !known {
 		return fmt.Errorf("unknown model: %s", modelIdentifier)

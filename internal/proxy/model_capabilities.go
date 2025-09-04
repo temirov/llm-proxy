@@ -22,22 +22,23 @@ type modelCapabilities struct {
 
 // modelCapabilityPattern maps a model prefix to its capabilities.
 type modelCapabilityPattern struct {
-	prefix     string
-	capability modelCapabilities
+	prefix       string
+	capabilities modelCapabilities
 }
 
-var capabilityTable = []modelCapabilityPattern{
-	{prefix: modelPrefixGPT4oMini, capability: modelCapabilities{apiFlavor: apiFlavorResponses, supportsWebSearch: false, supportsTemperature: true}},
-	{prefix: modelPrefixGPT4o, capability: modelCapabilities{apiFlavor: apiFlavorResponses, supportsWebSearch: true, supportsTemperature: true}},
-	{prefix: modelPrefixGPT41, capability: modelCapabilities{apiFlavor: apiFlavorResponses, supportsWebSearch: true, supportsTemperature: true}},
-	{prefix: modelPrefixGPT5Mini, capability: modelCapabilities{apiFlavor: apiFlavorResponses, supportsWebSearch: false, supportsTemperature: false}},
+// capabilitiesTable defines known capabilities for recognized model prefixes.
+var capabilitiesTable = []modelCapabilityPattern{
+	{prefix: modelPrefixGPT4oMini, capabilities: modelCapabilities{apiFlavor: apiFlavorResponses, supportsWebSearch: false, supportsTemperature: true}},
+	{prefix: modelPrefixGPT4o, capabilities: modelCapabilities{apiFlavor: apiFlavorResponses, supportsWebSearch: true, supportsTemperature: true}},
+	{prefix: modelPrefixGPT41, capabilities: modelCapabilities{apiFlavor: apiFlavorResponses, supportsWebSearch: true, supportsTemperature: true}},
+	{prefix: modelPrefixGPT5Mini, capabilities: modelCapabilities{apiFlavor: apiFlavorResponses, supportsWebSearch: false, supportsTemperature: false}},
 }
 
 // lookupModelCapabilities finds capabilities for the given model identifier.
 func lookupModelCapabilities(modelIdentifier string) (modelCapabilities, bool) {
-	for _, entry := range capabilityTable {
+	for _, entry := range capabilitiesTable {
 		if modelIdentifier == entry.prefix || strings.HasPrefix(modelIdentifier, entry.prefix) {
-			return entry.capability, true
+			return entry.capabilities, true
 		}
 	}
 	return modelCapabilities{}, false

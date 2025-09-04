@@ -3,7 +3,7 @@ package proxy
 import "testing"
 
 // TestResolveModelSpecification verifies that model capabilities come from the capability table.
-func TestResolveModelSpecification(t *testing.T) {
+func TestResolveModelSpecification(testFramework *testing.T) {
 	testCases := []struct {
 		modelIdentifier   string
 		expectTemperature bool
@@ -12,13 +12,13 @@ func TestResolveModelSpecification(t *testing.T) {
 		{modelPrefixGPT4o, true, true},
 		{modelPrefixGPT5Mini, false, false},
 	}
-	for _, tc := range testCases {
-		capability := resolveModelSpecification(tc.modelIdentifier)
-		if capability.supportsTemperature != tc.expectTemperature {
-			t.Fatalf("model %s temperature=%v want=%v", tc.modelIdentifier, capability.supportsTemperature, tc.expectTemperature)
+	for _, testCase := range testCases {
+		capabilities := resolveModelSpecification(testCase.modelIdentifier)
+		if capabilities.supportsTemperature != testCase.expectTemperature {
+			testFramework.Fatalf("model %s temperature=%v want=%v", testCase.modelIdentifier, capabilities.supportsTemperature, testCase.expectTemperature)
 		}
-		if capability.supportsWebSearch != tc.expectWebSearch {
-			t.Fatalf("model %s webSearch=%v want=%v", tc.modelIdentifier, capability.supportsWebSearch, tc.expectWebSearch)
+		if capabilities.supportsWebSearch != testCase.expectWebSearch {
+			testFramework.Fatalf("model %s webSearch=%v want=%v", testCase.modelIdentifier, capabilities.supportsWebSearch, testCase.expectWebSearch)
 		}
 	}
 }
