@@ -6,15 +6,13 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/temirov/llm-proxy/internal/constants"
 	"go.uber.org/zap"
 )
 
 const (
 	// logEventReadResponseBodyFailed identifies failures while reading an HTTP response body.
 	logEventReadResponseBodyFailed = "read response body failed"
-
-	// logFieldLatencyMs represents the log field key for HTTP latency in milliseconds.
-	logFieldLatencyMs = "latency_ms"
 )
 
 // BuildHTTPRequestWithHeaders constructs an HTTP request and applies headers.
@@ -58,7 +56,7 @@ func PerformHTTPRequest(do func(*http.Request) (*http.Response, error), httpRequ
 	latencyMillis := time.Since(startTime).Milliseconds()
 	if retryError != nil {
 		if structuredLogger != nil {
-			structuredLogger.Errorw(logEventOnTransportError, "err", retryError, logFieldLatencyMs, latencyMillis)
+			structuredLogger.Errorw(logEventOnTransportError, "err", retryError, constants.LogFieldLatencyMilliseconds, latencyMillis)
 		}
 		return 0, nil, latencyMillis, retryError
 	}
