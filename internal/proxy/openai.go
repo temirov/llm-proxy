@@ -28,6 +28,8 @@ var (
 	upstreamPollTimeout time.Duration
 )
 
+const defaultTemperature = 0.7
+
 // UpstreamPollTimeout returns the current upstream poll timeout.
 func UpstreamPollTimeout() time.Duration { return upstreamPollTimeout }
 
@@ -42,6 +44,21 @@ type responsesAPIShim struct {
 	} `json:"choices"`
 }
 
+// OpenAITool specifies a tool that the model can invoke while processing a request.
+type OpenAITool struct {
+	Type string `json:"type"`
+}
+
+// OpenAIRequest represents the payload sent to the OpenAI responses API.
+type OpenAIRequest struct {
+	Model           string              `json:"model"`
+	Input           []map[string]string `json:"input"`
+	MaxOutputTokens int                 `json:"max_output_tokens"`
+	Temperature     *float64            `json:"temperature,omitempty"`
+	Tools           []OpenAITool        `json:"tools,omitempty"`
+	ToolChoice      string              `json:"tool_choice,omitempty"`
+}
+
 // openAIRequest sends a prompt to the OpenAI responses API and returns the resulting text.
 // It retries without unsupported parameters and polls for completion when needed.
 func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, systemPrompt string, webSearchEnabled bool, structuredLogger *zap.SugaredLogger) (string, error) {
@@ -52,17 +69,18 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 
 	modelCapabilities := ResolveModelSpecification(modelIdentifier)
 
-	requestPayload := map[string]any{
-		keyModel:           modelIdentifier,
-		keyInput:           messageList,
-		keyMaxOutputTokens: maxOutputTokens,
+	requestPayload := OpenAIRequest{
+		Model:           modelIdentifier,
+		Input:           messageList,
+		MaxOutputTokens: maxOutputTokens,
 	}
 	if modelCapabilities.SupportsTemperature() {
-		requestPayload[keyTemperature] = 0.7
+		temperatureValue := defaultTemperature
+		requestPayload.Temperature = &temperatureValue
 	}
 	if webSearchEnabled && modelCapabilities.SupportsWebSearch() {
-		requestPayload[keyTools] = []any{map[string]any{keyType: toolTypeWebSearch}}
-		requestPayload[keyToolChoice] = keyAuto
+		requestPayload.Tools = []OpenAITool{{Type: toolTypeWebSearch}}
+		requestPayload.ToolChoice = keyAuto
 	}
 
 	payloadBytes, marshalError := json.Marshal(requestPayload)
@@ -86,9 +104,9 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 
 	if statusCode >= http.StatusBadRequest &&
 		strings.Contains(string(responseBytes), "'temperature'") &&
-		requestPayload[keyTemperature] != nil {
+		requestPayload.Temperature != nil {
 		structuredLogger.Infow(logEventRetryingWithoutParam, "parameter", keyTemperature)
-		delete(requestPayload, keyTemperature)
+		requestPayload.Temperature = nil
 		retryPayloadBytes, marshalRetryError := json.Marshal(requestPayload)
 		if marshalRetryError != nil {
 			structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalRetryError)
@@ -109,10 +127,10 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 
 	if statusCode >= http.StatusBadRequest &&
 		strings.Contains(string(responseBytes), "'tools'") &&
-		requestPayload[keyTools] != nil {
+		len(requestPayload.Tools) > 0 {
 		structuredLogger.Infow(logEventRetryingWithoutParam, "parameter", keyTools)
-		delete(requestPayload, keyTools)
-		delete(requestPayload, keyToolChoice)
+		requestPayload.Tools = nil
+		requestPayload.ToolChoice = ""
 		retryPayloadBytes, marshalRetryError := json.Marshal(requestPayload)
 		if marshalRetryError != nil {
 			structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalRetryError)
