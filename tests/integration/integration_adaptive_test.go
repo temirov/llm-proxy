@@ -79,15 +79,15 @@ func newAdaptiveRouter(testingInstance *testing.T, mode string) *gin.Engine {
 	testingInstance.Cleanup(proxy.ResetResponsesURL)
 	logger, _ := zap.NewDevelopment()
 	testingInstance.Cleanup(func() { _ = logger.Sync() })
-	router, err := proxy.BuildRouter(proxy.Configuration{
+	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: serviceSecretValue,
 		OpenAIKey:     openAIKeyValue,
 		LogLevel:      "debug",
 		WorkerCount:   1,
 		QueueSize:     8,
 	}, logger.Sugar())
-	if err != nil {
-		testingInstance.Fatalf("BuildRouter failed: %v", err)
+	if buildRouterError != nil {
+		testingInstance.Fatalf("BuildRouter failed: %v", buildRouterError)
 	}
 	return router
 }

@@ -13,8 +13,8 @@ import (
 )
 
 type result struct {
-	text string
-	err  error
+	text         string
+	requestError error
 }
 
 type requestTask struct {
@@ -26,8 +26,8 @@ type requestTask struct {
 }
 
 func BuildRouter(config Configuration, structuredLogger *zap.SugaredLogger) (*gin.Engine, error) {
-	if err := validateConfig(config); err != nil {
-		return nil, err
+	if validationError := validateConfig(config); validationError != nil {
+		return nil, validationError
 	}
 
 	// Normalize tunables with defaults
@@ -74,7 +74,7 @@ func BuildRouter(config Configuration, structuredLogger *zap.SugaredLogger) (*gi
 					pending.webSearchEnabled,
 					structuredLogger,
 				)
-				pending.reply <- result{text: text, err: requestError}
+				pending.reply <- result{text: text, requestError: requestError}
 			}
 		}()
 	}
@@ -110,8 +110,8 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 		if modelIdentifier == "" {
 			modelIdentifier = DefaultModel
 		}
-		if err := validator.Verify(modelIdentifier); err != nil {
-			ginContext.String(http.StatusBadRequest, err.Error())
+		if verificationError := validator.Verify(modelIdentifier); verificationError != nil {
+			ginContext.String(http.StatusBadRequest, verificationError.Error())
 			return
 		}
 
@@ -155,11 +155,11 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 
 		select {
 		case outcome := <-replyChannel:
-			if outcome.err != nil {
-				if errors.Is(outcome.err, ErrUnknownModel) {
-					ginContext.String(http.StatusBadRequest, outcome.err.Error())
+			if outcome.requestError != nil {
+				if errors.Is(outcome.requestError, ErrUnknownModel) {
+					ginContext.String(http.StatusBadRequest, outcome.requestError.Error())
 				} else {
-					ginContext.String(http.StatusBadGateway, outcome.err.Error())
+					ginContext.String(http.StatusBadGateway, outcome.requestError.Error())
 				}
 				return
 			}

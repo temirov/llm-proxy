@@ -45,15 +45,15 @@ func TestIntegration_WebSearch_UnsupportedModel_Returns400(testingInstance *test
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
 
-	router, err := proxy.BuildRouter(proxy.Configuration{
+	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: serviceSecret,
 		OpenAIKey:     openAIKey,
 		LogLevel:      logLevel,
 		WorkerCount:   1,
 		QueueSize:     4,
 	}, logger.Sugar())
-	if err != nil {
-		testingInstance.Fatalf("BuildRouter error: %v", err)
+	if buildRouterError != nil {
+		testingInstance.Fatalf("BuildRouter error: %v", buildRouterError)
 	}
 
 	app := httptest.NewServer(router)
@@ -107,15 +107,15 @@ func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(testi
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
 
-	router, err := proxy.BuildRouter(proxy.Configuration{
+	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: serviceSecret,
 		OpenAIKey:     openAIKey,
 		LogLevel:      logLevel,
 		WorkerCount:   1,
 		QueueSize:     4,
 	}, logger.Sugar())
-	if err != nil {
-		testingInstance.Fatalf("BuildRouter error: %v", err)
+	if buildRouterError != nil {
+		testingInstance.Fatalf("BuildRouter error: %v", buildRouterError)
 	}
 
 	app := httptest.NewServer(router)
