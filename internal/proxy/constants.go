@@ -35,6 +35,7 @@ const (
 	errorOpenAIAPINoText             = "OpenAI API error (no text)"
 	errorOpenAIFailedStatus          = "OpenAI API error (failed status)"
 	errorOpenAIModelValidation       = "OpenAI model validation error"
+	errorUnknownModel                = "unknown model: %s"
 	errorWebSearchUnsupportedByModel = "web_search is not supported by the selected model"
 	errorResponseFormat              = "response formatting error"
 
