@@ -81,11 +81,13 @@ const (
 	logFieldValue        = "value"
 	logFieldError        = "error"
 
-	logEventOpenAIRequestError            = "OpenAI request error"
-	logEventOpenAIResponse                = "OpenAI API response"
-	logEventOpenAIModelsList              = "OpenAI models list"
-	logEventOpenAIModelsListError         = "OpenAI models list error"
-	logEventOpenAIPollError               = "OpenAI poll error"
+	logEventOpenAIRequestError    = "OpenAI request error"
+	logEventOpenAIResponse        = "OpenAI API response"
+	logEventOpenAIModelsList      = "OpenAI models list"
+	logEventOpenAIModelsListError = "OpenAI models list error"
+	logEventOpenAIPollError       = "OpenAI poll error"
+	// logEventParseOpenAIResponseFailed indicates that parsing the OpenAI response failed.
+	logEventParseOpenAIResponseFailed     = "parse OpenAI response failed"
 	logEventForbiddenRequest              = "forbidden request"
 	logEventRequestReceived               = "request received"
 	logEventResponseSent                  = "response sent"
