@@ -25,6 +25,12 @@ var (
 	upstreamPollTimeout time.Duration
 )
 
+// UpstreamPollTimeout returns the current upstream poll timeout.
+func UpstreamPollTimeout() time.Duration { return upstreamPollTimeout }
+
+// SetUpstreamPollTimeout overrides the upstream poll timeout value.
+func SetUpstreamPollTimeout(newTimeout time.Duration) { upstreamPollTimeout = newTimeout }
+
 type responsesAPIShim struct {
 	Choices []struct {
 		Message struct {
@@ -41,17 +47,17 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		{keyRole: keyUser, keyContent: userPrompt},
 	}
 
-	modelCapabilities := resolveModelSpecification(modelIdentifier)
+	modelCapabilities := ResolveModelSpecification(modelIdentifier)
 
 	requestPayload := map[string]any{
 		keyModel:           modelIdentifier,
 		keyInput:           messageList,
 		keyMaxOutputTokens: maxOutputTokens,
 	}
-	if modelCapabilities.supportsTemperature {
+	if modelCapabilities.SupportsTemperature() {
 		requestPayload[keyTemperature] = 0.7
 	}
-	if webSearchEnabled && modelCapabilities.supportsWebSearch {
+	if webSearchEnabled && modelCapabilities.SupportsWebSearch() {
 		requestPayload[keyTools] = []any{map[string]any{keyType: toolTypeWebSearch}}
 		requestPayload[keyToolChoice] = keyAuto
 	}

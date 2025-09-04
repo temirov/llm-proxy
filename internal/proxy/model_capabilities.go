@@ -20,6 +20,16 @@ type modelCapabilities struct {
 	supportsTemperature bool
 }
 
+// SupportsWebSearch reports whether the model allows web search.
+func (capabilities modelCapabilities) SupportsWebSearch() bool {
+	return capabilities.supportsWebSearch
+}
+
+// SupportsTemperature reports whether the model allows setting temperature.
+func (capabilities modelCapabilities) SupportsTemperature() bool {
+	return capabilities.supportsTemperature
+}
+
 // modelCapabilityPattern maps a model prefix to its capabilities.
 type modelCapabilityPattern struct {
 	prefix       string
