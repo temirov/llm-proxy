@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -140,6 +141,7 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 		if deadlineFound {
 			enqueueDuration = time.Until(requestDeadline)
 		}
+		enqueueContext, enqueueCancel := context.WithTimeout(ginContext.Request.Context(), enqueueDuration)
 		select {
 		case taskQueue <- requestTask{
 			prompt:           userPrompt,
@@ -148,13 +150,17 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 			webSearchEnabled: webSearchEnabled,
 			reply:            replyChannel,
 		}:
-		case <-time.After(enqueueDuration):
+			enqueueCancel()
+		case <-enqueueContext.Done():
+			enqueueCancel()
 			ginContext.String(http.StatusServiceUnavailable, errorQueueFull)
 			return
 		}
 
+		requestContext, requestCancel := context.WithTimeout(ginContext.Request.Context(), requestTimeout)
 		select {
 		case outcome := <-replyChannel:
+			requestCancel()
 			if outcome.requestError != nil {
 				if errors.Is(outcome.requestError, ErrUnknownModel) {
 					ginContext.String(http.StatusBadRequest, outcome.requestError.Error())
@@ -166,7 +172,8 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 			mime := preferredMime(ginContext)
 			formattedBody, contentType := formatResponse(outcome.text, mime, userPrompt, structuredLogger)
 			ginContext.Data(http.StatusOK, contentType, []byte(formattedBody))
-		case <-time.After(requestTimeout):
+		case <-requestContext.Done():
+			requestCancel()
 			ginContext.String(http.StatusGatewayTimeout, errorRequestTimedOut)
 		}
 	}
