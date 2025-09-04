@@ -82,6 +82,10 @@ const (
 	logFieldStatus       = "status"
 	logFieldValue        = "value"
 	logFieldError        = "error"
+	// logFieldParameter identifies the request parameter related to a log entry.
+	logFieldParameter = "parameter"
+	// logFieldID identifies the response identifier logged for traceability.
+	logFieldID = "id"
 	// logFieldExpectedFingerprint identifies the fingerprint of the expected client key.
 	logFieldExpectedFingerprint = "expected_fingerprint"
 
