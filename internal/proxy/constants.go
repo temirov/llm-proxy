@@ -29,13 +29,15 @@ const (
 
 	errorMissingPrompt = "missing prompt parameter"
 	// errorMissingClientKey indicates that the key query parameter is missing.
-	errorMissingClientKey      = "missing client key"
-	errorRequestTimedOut       = "request timed out"
-	errorRequestBuild          = "request build error"
-	errorOpenAIRequest         = "OpenAI request error"
-	errorOpenAIAPI             = "OpenAI API error"
-	errorOpenAIAPINoText       = "OpenAI API error (no text)"
-	errorOpenAIFailedStatus    = "OpenAI API error (failed status)"
+	errorMissingClientKey   = "missing client key"
+	errorRequestTimedOut    = "request timed out"
+	errorRequestBuild       = "request build error"
+	errorOpenAIRequest      = "OpenAI request error"
+	errorOpenAIAPI          = "OpenAI API error"
+	errorOpenAIAPINoText    = "OpenAI API error (no text)"
+	errorOpenAIFailedStatus = "OpenAI API error (failed status)"
+	// errorUpstreamIncomplete indicates that the upstream provider returned an incomplete response.
+	errorUpstreamIncomplete    = "OpenAI API error (incomplete response)"
 	errorOpenAIModelValidation = "OpenAI model validation error"
 	// errorUnknownModel indicates that a model identifier is not recognized.
 	errorUnknownModel                = "unknown model"
