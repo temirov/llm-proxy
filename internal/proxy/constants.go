@@ -87,7 +87,6 @@ const (
 	logEventMarshalRequestPayload         = "marshal request payload failed"
 	logEventMarshalResponsePayload        = "marshal response payload failed"
 	logEventBuildHTTPRequest              = "build HTTP request failed"
-	logEventReadResponseBodyFailed        = "read response body failed"
 	logEventRetryingWithoutParam          = "retrying without parameter"
 	logEventParseWebSearchParameterFailed = "parse web_search parameter failed"
 

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"go.uber.org/zap"
 )
 
@@ -28,16 +29,38 @@ func BuildHTTPRequestWithHeaders(method string, requestURL string, body io.Reade
 	return httpRequest, nil
 }
 
-// PerformHTTPRequest executes the request with the provided do function and returns status, body, and latency.
+// PerformHTTPRequest issues the HTTP request and returns the status code, body, and latency.
+// It automatically retries transport failures using exponential backoff.
 func PerformHTTPRequest(do func(*http.Request) (*http.Response, error), httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEventOnTransportError string) (int, []byte, int64, error) {
 	startTime := time.Now()
-	httpResponse, httpError := do(httpRequest)
-	latencyMillis := time.Since(startTime).Milliseconds()
-	if httpError != nil {
-		if structuredLogger != nil {
-			structuredLogger.Errorw(logEventOnTransportError, "err", httpError, logFieldLatencyMs, latencyMillis)
+	var httpResponse *http.Response
+	operation := func() error {
+		if httpRequest.GetBody != nil {
+			resetBody, resetError := httpRequest.GetBody()
+			if resetError != nil {
+				return resetError
+			}
+			httpRequest.Body = resetBody
 		}
-		return 0, nil, latencyMillis, httpError
+		response, httpError := do(httpRequest)
+		if httpError != nil {
+			if structuredLogger != nil {
+				structuredLogger.Errorw(logEventOnTransportError, "err", httpError)
+			}
+			return httpError
+		}
+		httpResponse = response
+		return nil
+	}
+
+	exponentialBackoff := backoff.NewExponentialBackOff()
+	retryError := backoff.Retry(operation, backoff.WithContext(exponentialBackoff, httpRequest.Context()))
+	latencyMillis := time.Since(startTime).Milliseconds()
+	if retryError != nil {
+		if structuredLogger != nil {
+			structuredLogger.Errorw(logEventOnTransportError, "err", retryError, logFieldLatencyMs, latencyMillis)
+		}
+		return 0, nil, latencyMillis, retryError
 	}
 	defer httpResponse.Body.Close()
 
