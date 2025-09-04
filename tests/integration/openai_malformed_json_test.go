@@ -9,12 +9,8 @@ import (
 )
 
 const (
-	// malformedJSONPayload is the body returned by the stubbed upstream to simulate invalid JSON.
 	malformedJSONPayload = "invalid"
-	// expectedErrorMessage is the error returned by the proxy when upstream JSON cannot be parsed.
 	expectedErrorMessage = "OpenAI API error"
-	// contentTypeJSON is the HTTP Content-Type header value for JSON payloads.
-	contentTypeJSON = "application/json"
 )
 
 // newMalformedOpenAIServer returns a stub OpenAI server emitting invalid JSON for the responses endpoint.
@@ -47,15 +43,15 @@ func TestOpenAIMalformedJSON(testingInstance *testing.T) {
 	requestURL.RawQuery = queryValues.Encode()
 	httpResponse, requestError := http.Get(requestURL.String())
 	if requestError != nil {
-		testingInstance.Fatalf("request error: %v", requestError)
+		testingInstance.Fatalf(requestErrorFormat, requestError)
 	}
 	defer httpResponse.Body.Close()
 	if httpResponse.StatusCode != http.StatusBadGateway {
 		responseBody, _ := io.ReadAll(httpResponse.Body)
-		testingInstance.Fatalf("status=%d body=%s", httpResponse.StatusCode, string(responseBody))
+		testingInstance.Fatalf(unexpectedStatusFormat, httpResponse.StatusCode, string(responseBody))
 	}
 	responseBytes, _ := io.ReadAll(httpResponse.Body)
 	if string(responseBytes) != expectedErrorMessage {
-		testingInstance.Fatalf("body=%q want=%q", string(responseBytes), expectedErrorMessage)
+		testingInstance.Fatalf(bodyMismatchFormat, string(responseBytes), expectedErrorMessage)
 	}
 }
