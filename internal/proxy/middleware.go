@@ -12,14 +12,15 @@ import (
 	"go.uber.org/zap"
 )
 
-func sanitizeRequestURI(u *url.URL) string {
-	q := u.Query()
-	if q.Has(queryParameterKey) {
-		q.Set(queryParameterKey, "***REDACTED***")
+// sanitizeRequestURI replaces sensitive query parameter values with a placeholder.
+func sanitizeRequestURI(requestURL *url.URL) string {
+	queryParameters := requestURL.Query()
+	if queryParameters.Has(queryParameterKey) {
+		queryParameters.Set(queryParameterKey, redactedPlaceholder)
 	}
-	u2 := *u
-	u2.RawQuery = q.Encode()
-	return u2.RequestURI()
+	sanitizedURL := *requestURL
+	sanitizedURL.RawQuery = queryParameters.Encode()
+	return sanitizedURL.RequestURI()
 }
 
 // requestResponseLogger emits structured request and response metadata for traceability.
