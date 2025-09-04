@@ -61,9 +61,9 @@ func makeHTTPClient(testingInstance *testing.T, wantWebSearch bool) (*http.Clien
 // newLogger constructs a development logger for tests.
 func newLogger(testingInstance *testing.T) *zap.SugaredLogger {
 	testingInstance.Helper()
-	l, _ := zap.NewDevelopment()
-	testingInstance.Cleanup(func() { _ = l.Sync() })
-	return l.Sugar()
+	loggerInstance, _ := zap.NewDevelopment()
+	testingInstance.Cleanup(func() { _ = loggerInstance.Sync() })
+	return loggerInstance.Sugar()
 }
 
 // configureProxy sets URLs and the HTTP client for proxy operations.
@@ -193,9 +193,9 @@ func TestIntegrationConfiguration(testingInstance *testing.T) {
 			}
 			defer httpResponse.Body.Close()
 			if httpResponse.StatusCode != testCase.expectedStatus {
-				var buf bytes.Buffer
-				_, _ = io.Copy(&buf, httpResponse.Body)
-				subTest.Fatalf("status=%d want=%d body=%q", httpResponse.StatusCode, testCase.expectedStatus, buf.String())
+				var bodyBuffer bytes.Buffer
+				_, _ = io.Copy(&bodyBuffer, httpResponse.Body)
+				subTest.Fatalf("status=%d want=%d body=%q", httpResponse.StatusCode, testCase.expectedStatus, bodyBuffer.String())
 			}
 		})
 	}
