@@ -44,7 +44,13 @@ func (validator *modelValidator) refresh() error {
 	httpResponse, httpError := HTTPClient.Do(httpRequest)
 	latencyMillis := time.Since(startTime).Milliseconds()
 	if httpError != nil {
-		validator.logger.Errorw(logEventOpenAIModelsListError, "err", httpError, constants.LogFieldLatencyMilliseconds, latencyMillis)
+		validator.logger.Errorw(
+			logEventOpenAIModelsListError,
+			constants.LogFieldError,
+			httpError,
+			constants.LogFieldLatencyMilliseconds,
+			latencyMillis,
+		)
 		return httpError
 	}
 	defer httpResponse.Body.Close()

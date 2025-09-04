@@ -58,7 +58,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 
 	payloadBytes, marshalError := json.Marshal(requestPayload)
 	if marshalError != nil {
-		structuredLogger.Errorw(logEventMarshalRequestPayload, "err", marshalError)
+		structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalError)
 		return "", errors.New(errorRequestBuild)
 	}
 
@@ -66,7 +66,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	defer cancelRequest()
 	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, responsesURL, openAIKey, bytes.NewReader(payloadBytes))
 	if buildError != nil {
-		structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildError)
+		structuredLogger.Errorw(logEventBuildHTTPRequest, constants.LogFieldError, buildError)
 		return "", errors.New(errorRequestBuild)
 	}
 
@@ -82,14 +82,14 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		delete(requestPayload, keyTemperature)
 		retryPayloadBytes, marshalRetryError := json.Marshal(requestPayload)
 		if marshalRetryError != nil {
-			structuredLogger.Errorw(logEventMarshalRequestPayload, "err", marshalRetryError)
+			structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalRetryError)
 			return "", errors.New(errorRequestBuild)
 		}
 		retryContext, cancelRetry := context.WithTimeout(context.Background(), requestTimeout)
 		defer cancelRetry()
 		retryRequest, buildRetryError := buildAuthorizedJSONRequest(retryContext, http.MethodPost, responsesURL, openAIKey, bytes.NewReader(retryPayloadBytes))
 		if buildRetryError != nil {
-			structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildRetryError)
+			structuredLogger.Errorw(logEventBuildHTTPRequest, constants.LogFieldError, buildRetryError)
 			return "", errors.New(errorRequestBuild)
 		}
 		statusCode, responseBytes, latencyMillis, transportError = utils.PerformHTTPRequest(HTTPClient.Do, retryRequest, structuredLogger, logEventOpenAIRequestError)
@@ -106,14 +106,14 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		delete(requestPayload, keyToolChoice)
 		retryPayloadBytes, marshalRetryError := json.Marshal(requestPayload)
 		if marshalRetryError != nil {
-			structuredLogger.Errorw(logEventMarshalRequestPayload, "err", marshalRetryError)
+			structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalRetryError)
 			return "", errors.New(errorRequestBuild)
 		}
 		retryContext, cancelRetry := context.WithTimeout(context.Background(), requestTimeout)
 		defer cancelRetry()
 		retryRequest, buildRetryError := buildAuthorizedJSONRequest(retryContext, http.MethodPost, responsesURL, openAIKey, bytes.NewReader(retryPayloadBytes))
 		if buildRetryError != nil {
-			structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildRetryError)
+			structuredLogger.Errorw(logEventBuildHTTPRequest, constants.LogFieldError, buildRetryError)
 			return "", errors.New(errorRequestBuild)
 		}
 		statusCode, responseBytes, latencyMillis, transportError = utils.PerformHTTPRequest(HTTPClient.Do, retryRequest, structuredLogger, logEventOpenAIRequestError)
@@ -147,7 +147,13 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	if utils.IsBlank(outputText) && !utils.IsBlank(responseIdentifier) {
 		finalText, pollError := pollResponseUntilDone(openAIKey, responseIdentifier, structuredLogger)
 		if pollError != nil {
-			structuredLogger.Errorw(logEventOpenAIPollError, "id", responseIdentifier, "err", pollError)
+			structuredLogger.Errorw(
+				logEventOpenAIPollError,
+				"id",
+				responseIdentifier,
+				constants.LogFieldError,
+				pollError,
+			)
 			return "", errors.New(errorOpenAIAPI)
 		}
 		if utils.IsBlank(finalText) {
