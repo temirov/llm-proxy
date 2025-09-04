@@ -23,7 +23,7 @@ variables:
 |---------------------------------------|-----------------------------------------------------|
 | `--service_secret` / `SERVICE_SECRET` | Shared secret required in the `key` query parameter |
 | `--openai_api_key` / `OPENAI_API_KEY` | OpenAI API key used for requests                    |
-| `--port` / `GPT_PORT`                 | Port for the HTTP server (default `8080`)           |
+| `--port` / `HTTP_PORT`                | Port for the HTTP server (default `8080`)           |
 | `--log_level` / `LOG_LEVEL`           | `debug` or `info` (default `info`)                  |
 | `--system_prompt` / `SYSTEM_PROMPT`   | Optional system prompt text                         |
 | `--workers` / `GPT_WORKERS`           | Number of worker goroutines (default `4`)           |
@@ -106,13 +106,13 @@ Not all models support tools; for **web search**, use `gpt-4o` or `gpt-4.1`.
 
 ### Model capabilities
 
-| Model | Provider | Web Search |
-|-------|----------|------------|
-| `gpt-4.1` | OpenAI | Yes |
-| `gpt-4o` | OpenAI | Yes |
-| `gpt-4o-mini` | OpenAI | No |
-| `gpt-5` | OpenAI | Yes |
-| `gpt-5-mini` | OpenAI | No |
+| Model         | Provider | Web Search |
+|---------------|----------|------------|
+| `gpt-4.1`     | OpenAI   | Yes        |
+| `gpt-4o`      | OpenAI   | Yes        |
+| `gpt-4o-mini` | OpenAI   | No         |
+| `gpt-5`       | OpenAI   | Yes        |
+| `gpt-5-mini`  | OpenAI   | No         |
 
 ### Status codes
 

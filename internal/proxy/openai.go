@@ -18,9 +18,11 @@ type HTTPDoer interface {
 }
 
 var (
-	HTTPClient   HTTPDoer = http.DefaultClient
-	ResponsesURL string   = "https://api.openai.com/v1/responses"
-	ModelsURL    string   = "https://api.openai.com/v1/models"
+	HTTPClient          HTTPDoer = http.DefaultClient
+	ResponsesURL                 = "https://api.openai.com/v1/responses"
+	ModelsURL                    = "https://api.openai.com/v1/models"
+	maxOutputTokens              = DefaultMaxOutputTokens
+	upstreamPollTimeout          = 10 * time.Second
 )
 
 type responsesAPIShim struct {
@@ -43,7 +45,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	requestPayload := map[string]any{
 		keyModel:           modelIdentifier,
 		keyInput:           messageList,
-		keyMaxOutputTokens: 1024,
+		keyMaxOutputTokens: maxOutputTokens, // ← configurable
 	}
 	if spec.IncludeTemperature {
 		requestPayload[keyTemperature] = 0.7
@@ -142,7 +144,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 }
 
 func pollResponseUntilDone(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, error) {
-	deadlineInstant := time.Now().Add(10 * time.Second)
+	deadlineInstant := time.Now().Add(upstreamPollTimeout) // ← configurable
 	pollInterval := 300 * time.Millisecond
 
 	for {
@@ -278,61 +280,19 @@ func buildAuthorizedJSONRequest(method string, url string, openAIKey string, bod
 }
 
 func performJSONRequest(httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEventOnTransportError string) (int, []byte, int64, error) {
-	// up to 2 retries on transport error or 5xx
-	const maxRetries = 2
-	var lastCode int
-	var lastBody []byte
-	var lastLatency int64
-	var lastErr error
-
-	// keep a reusable copy of the body if present
-	var bodyCopy []byte
-	if httpRequest.Body != nil {
-		buf, _ := io.ReadAll(httpRequest.Body)
-		httpRequest.Body.Close()
-		bodyCopy = buf
-		httpRequest.Body = io.NopCloser(bytes.NewReader(buf))
+	startTime := time.Now()
+	httpResponse, httpError := HTTPClient.Do(httpRequest)
+	latencyMillis := time.Since(startTime).Milliseconds()
+	if httpError != nil {
+		structuredLogger.Errorw(logEventOnTransportError, "err", httpError, logFieldLatencyMs, latencyMillis)
+		return 0, nil, latencyMillis, httpError
 	}
+	defer httpResponse.Body.Close()
 
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		start := time.Now()
-		resp, err := HTTPClient.Do(httpRequest)
-		latency := time.Since(start).Milliseconds()
-		lastLatency = latency
-
-		if err != nil {
-			lastErr = err
-			if structuredLogger != nil {
-				structuredLogger.Errorw(logEventOnTransportError, "err", err, logFieldLatencyMs, latency, "attempt", attempt)
-			}
-		} else {
-			defer resp.Body.Close()
-			b, readErr := io.ReadAll(resp.Body)
-			if readErr != nil {
-				if structuredLogger != nil {
-					structuredLogger.Errorw(logEventReadResponseBodyFailed, "err", readErr)
-				}
-				lastCode, lastBody, lastErr = resp.StatusCode, nil, readErr
-			} else {
-				// success if <500
-				if resp.StatusCode < 500 {
-					return resp.StatusCode, b, latency, nil
-				}
-				lastCode, lastBody, lastErr = resp.StatusCode, b, nil
-			}
-		}
-
-		// retry only on transport error or 5xx
-		if attempt == maxRetries {
-			break
-		}
-		time.Sleep(time.Duration(200*(1<<attempt)) * time.Millisecond)
-
-		// rebuild request body for the next round if needed
-		if bodyCopy != nil {
-			httpRequest.Body = io.NopCloser(bytes.NewReader(bodyCopy))
-		}
+	responseBytes, readError := io.ReadAll(httpResponse.Body)
+	if readError != nil {
+		structuredLogger.Errorw(logEventReadResponseBodyFailed, "err", readError)
+		return httpResponse.StatusCode, nil, latencyMillis, readError
 	}
-
-	return lastCode, lastBody, lastLatency, lastErr
+	return httpResponse.StatusCode, responseBytes, latencyMillis, nil
 }

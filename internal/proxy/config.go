@@ -19,20 +19,27 @@ const (
 	DefaultModel = "gpt-4.1"
 
 	modelsCacheTTL = 24 * time.Hour
+
+	DefaultRequestTimeoutSeconds      = 60 // overall app-side request timeout
+	DefaultUpstreamPollTimeoutSeconds = 20 // poll budget after "incomplete"
+	DefaultMaxOutputTokens            = 1024
 )
 
-// Configuration captures runtime settings for the HTTP server and upstream requests.
+// Configuration holds runtime settings.
 type Configuration struct {
-	ServiceSecret string
-	OpenAIKey     string
-	Port          int
-	LogLevel      string
-	SystemPrompt  string
-	WorkerCount   int
-	QueueSize     int
+	ServiceSecret              string
+	OpenAIKey                  string
+	Port                       int
+	LogLevel                   string
+	SystemPrompt               string
+	WorkerCount                int
+	QueueSize                  int
+	RequestTimeoutSeconds      int
+	UpstreamPollTimeoutSeconds int
+	MaxOutputTokens            int
 }
 
-// validateConfig confirms the presence of required configuration values.
+// validateConfig confirms required settings are present.
 func validateConfig(config Configuration) error {
 	if strings.TrimSpace(config.ServiceSecret) == "" {
 		return apperrors.ErrMissingServiceSecret
