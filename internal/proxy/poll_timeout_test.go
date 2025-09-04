@@ -1,4 +1,4 @@
-package proxy
+package proxy_test
 
 import (
 	"io"
@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/temirov/llm-proxy/internal/proxy"
 	"go.uber.org/zap"
 )
 
@@ -27,21 +28,21 @@ func TestBuildRouterAppliesDefaultUpstreamPollTimeout(testFramework *testing.T) 
 	}))
 	defer modelsServer.Close()
 
-	SetModelsURL(modelsServer.URL + modelsPath)
-	HTTPClient = modelsServer.Client()
-	testFramework.Cleanup(ResetModelsURL)
-	testFramework.Cleanup(func() { HTTPClient = http.DefaultClient })
+	proxy.SetModelsURL(modelsServer.URL + modelsPath)
+	proxy.HTTPClient = modelsServer.Client()
+	testFramework.Cleanup(proxy.ResetModelsURL)
+	testFramework.Cleanup(func() { proxy.HTTPClient = http.DefaultClient })
 
 	loggerInstance, _ := zap.NewDevelopment()
 	defer loggerInstance.Sync()
 
-	previousPollTimeout := upstreamPollTimeout
-	defer func() { upstreamPollTimeout = previousPollTimeout }()
+	previousPollTimeout := proxy.UpstreamPollTimeout()
+	defer proxy.SetUpstreamPollTimeout(previousPollTimeout)
 
-	_, buildRouterError := BuildRouter(Configuration{
+	_, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret:              serviceSecretValue,
 		OpenAIKey:                  openAIKeyValue,
-		LogLevel:                   LogLevelDebug,
+		LogLevel:                   proxy.LogLevelDebug,
 		WorkerCount:                1,
 		QueueSize:                  1,
 		UpstreamPollTimeoutSeconds: 0,
@@ -50,8 +51,8 @@ func TestBuildRouterAppliesDefaultUpstreamPollTimeout(testFramework *testing.T) 
 		testFramework.Fatalf(messageBuildRouterError, buildRouterError)
 	}
 
-	expectedDuration := time.Duration(DefaultUpstreamPollTimeoutSeconds) * time.Second
-	if upstreamPollTimeout != expectedDuration {
-		testFramework.Fatalf(messageUnexpectedPollTimeout, upstreamPollTimeout, expectedDuration)
+	expectedDuration := time.Duration(proxy.DefaultUpstreamPollTimeoutSeconds) * time.Second
+	if proxy.UpstreamPollTimeout() != expectedDuration {
+		testFramework.Fatalf(messageUnexpectedPollTimeout, proxy.UpstreamPollTimeout(), expectedDuration)
 	}
 }

@@ -1,6 +1,17 @@
-package proxy
+package proxy_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/temirov/llm-proxy/internal/proxy"
+)
+
+const (
+	modelIdentifierGPT4o       = "gpt-4o"
+	modelIdentifierGPT5Mini    = "gpt-5-mini"
+	messageTemperatureMismatch = "model %s temperature=%v want=%v"
+	messageWebSearchMismatch   = "model %s webSearch=%v want=%v"
+)
 
 // TestResolveModelSpecification verifies that model capabilities come from the capability table.
 func TestResolveModelSpecification(testFramework *testing.T) {
@@ -9,16 +20,16 @@ func TestResolveModelSpecification(testFramework *testing.T) {
 		expectTemperature bool
 		expectWebSearch   bool
 	}{
-		{modelPrefixGPT4o, true, true},
-		{modelPrefixGPT5Mini, false, false},
+		{modelIdentifierGPT4o, true, true},
+		{modelIdentifierGPT5Mini, false, false},
 	}
 	for _, testCase := range testCases {
-		capabilities := resolveModelSpecification(testCase.modelIdentifier)
-		if capabilities.supportsTemperature != testCase.expectTemperature {
-			testFramework.Fatalf("model %s temperature=%v want=%v", testCase.modelIdentifier, capabilities.supportsTemperature, testCase.expectTemperature)
+		capabilities := proxy.ResolveModelSpecification(testCase.modelIdentifier)
+		if capabilities.SupportsTemperature() != testCase.expectTemperature {
+			testFramework.Fatalf(messageTemperatureMismatch, testCase.modelIdentifier, capabilities.SupportsTemperature(), testCase.expectTemperature)
 		}
-		if capabilities.supportsWebSearch != testCase.expectWebSearch {
-			testFramework.Fatalf("model %s webSearch=%v want=%v", testCase.modelIdentifier, capabilities.supportsWebSearch, testCase.expectWebSearch)
+		if capabilities.SupportsWebSearch() != testCase.expectWebSearch {
+			testFramework.Fatalf(messageWebSearchMismatch, testCase.modelIdentifier, capabilities.SupportsWebSearch(), testCase.expectWebSearch)
 		}
 	}
 }
