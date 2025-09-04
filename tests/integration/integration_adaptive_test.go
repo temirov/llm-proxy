@@ -15,21 +15,23 @@ import (
 	"go.uber.org/zap"
 )
 
-type adaptiveRoundTripper func(req *http.Request) (*http.Response, error)
+type adaptiveRoundTripper func(httpRequest *http.Request) (*http.Response, error)
 
-func (f adaptiveRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+func (roundTripper adaptiveRoundTripper) RoundTrip(httpRequest *http.Request) (*http.Response, error) {
+	return roundTripper(httpRequest)
+}
 
-func newAdaptiveClient(t *testing.T, mode string) *http.Client {
-	t.Helper()
+func newAdaptiveClient(testingContext *testing.T, mode string) *http.Client {
+	testingContext.Helper()
 	return &http.Client{
-		Transport: adaptiveRoundTripper(func(req *http.Request) (*http.Response, error) {
-			switch req.URL.String() {
+		Transport: adaptiveRoundTripper(func(httpRequest *http.Request) (*http.Response, error) {
+			switch httpRequest.URL.String() {
 			case proxy.ModelsURL():
 				body := `{"data":[{"id":"gpt-5-mini"}]}`
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 			case proxy.ResponsesURL():
-				buf, _ := io.ReadAll(req.Body)
-				req.Body.Close()
+				buf, _ := io.ReadAll(httpRequest.Body)
+				httpRequest.Body.Close()
 				payload := string(buf)
 				switch mode {
 				case "temperature":
@@ -37,15 +39,15 @@ func newAdaptiveClient(t *testing.T, mode string) *http.Client {
 						errBody := `{"error":{"message":"Unsupported parameter: 'temperature' is not supported with this model.","type":"invalid_request_error","param":"temperature","code":null}}`
 						return &http.Response{StatusCode: http.StatusBadRequest, Body: io.NopCloser(strings.NewReader(errBody)), Header: make(http.Header)}, nil
 					}
-					ok := `{"output_text":"ADAPT_OK_NO_TEMP"}`
-					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(ok)), Header: make(http.Header)}, nil
+					successPayload := `{"output_text":"ADAPT_OK_NO_TEMP"}`
+					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(successPayload)), Header: make(http.Header)}, nil
 				case "tools":
 					if strings.Contains(payload, `"tools"`) {
 						errBody := `{"error":{"message":"Unsupported parameter: 'tools' is not supported with this model.","type":"invalid_request_error","param":"tools","code":null}}`
 						return &http.Response{StatusCode: http.StatusBadRequest, Body: io.NopCloser(strings.NewReader(errBody)), Header: make(http.Header)}, nil
 					}
-					ok := `{"output_text":"ADAPT_OK_NO_TOOLS"}`
-					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(ok)), Header: make(http.Header)}, nil
+					successPayload := `{"output_text":"ADAPT_OK_NO_TOOLS"}`
+					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(successPayload)), Header: make(http.Header)}, nil
 				default:
 					return &http.Response{StatusCode: http.StatusTeapot, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header)}, nil
 				}
@@ -57,17 +59,17 @@ func newAdaptiveClient(t *testing.T, mode string) *http.Client {
 	}
 }
 
-func newAdaptiveRouter(t *testing.T, mode string) *gin.Engine {
-	t.Helper()
+func newAdaptiveRouter(testingContext *testing.T, mode string) *gin.Engine {
+	testingContext.Helper()
 	gin.SetMode(gin.TestMode)
-	proxy.HTTPClient = newAdaptiveClient(t, mode)
+	proxy.HTTPClient = newAdaptiveClient(testingContext, mode)
 	proxy.SetModelsURL("https://mock.local/v1/models")
 	proxy.SetResponsesURL("https://mock.local/v1/responses")
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	testingContext.Cleanup(proxy.ResetModelsURL)
+	testingContext.Cleanup(proxy.ResetResponsesURL)
 
 	logger, _ := zap.NewDevelopment()
-	t.Cleanup(func() { _ = logger.Sync() })
+	testingContext.Cleanup(func() { _ = logger.Sync() })
 	router, err := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: "sekret",
 		OpenAIKey:     "sk-test",
@@ -76,64 +78,64 @@ func newAdaptiveRouter(t *testing.T, mode string) *gin.Engine {
 		QueueSize:     8,
 	}, logger.Sugar())
 	if err != nil {
-		t.Fatalf("BuildRouter failed: %v", err)
+		testingContext.Fatalf("BuildRouter failed: %v", err)
 	}
 	return router
 }
 
-func TestAdaptive_RemovesTemperatureOn400(t *testing.T) {
-	router := newAdaptiveRouter(t, "temperature")
-	srv := httptest.NewServer(router)
-	t.Cleanup(srv.Close)
+func TestAdaptive_RemovesTemperatureOn400(testingContext *testing.T) {
+	router := newAdaptiveRouter(testingContext, "temperature")
+	testServer := httptest.NewServer(router)
+	testingContext.Cleanup(testServer.Close)
 
-	u, _ := url.Parse(srv.URL)
-	q := u.Query()
-	q.Set("prompt", "ping")
-	q.Set("key", "sekret")
-	q.Set("model", "gpt-5-mini")
-	u.RawQuery = q.Encode()
+	parsedURL, _ := url.Parse(testServer.URL)
+	queryValues := parsedURL.Query()
+	queryValues.Set("prompt", "ping")
+	queryValues.Set("key", "sekret")
+	queryValues.Set("model", "gpt-5-mini")
+	parsedURL.RawQuery = queryValues.Encode()
 
-	res, err := http.Get(u.String())
+	httpResponse, err := http.Get(parsedURL.String())
 	if err != nil {
-		t.Fatalf("GET failed: %v", err)
+		testingContext.Fatalf("GET failed: %v", err)
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		var buf bytes.Buffer
-		_, _ = io.Copy(&buf, res.Body)
-		t.Fatalf("status=%d body=%q", res.StatusCode, buf.String())
+	defer httpResponse.Body.Close()
+	if httpResponse.StatusCode != http.StatusOK {
+		var buffer bytes.Buffer
+		_, _ = io.Copy(&buffer, httpResponse.Body)
+		testingContext.Fatalf("status=%d body=%q", httpResponse.StatusCode, buffer.String())
 	}
-	b, _ := io.ReadAll(res.Body)
-	if string(b) != "ADAPT_OK_NO_TEMP" {
-		t.Fatalf("body=%q want=%q", string(b), "ADAPT_OK_NO_TEMP")
+	responseBytes, _ := io.ReadAll(httpResponse.Body)
+	if string(responseBytes) != "ADAPT_OK_NO_TEMP" {
+		testingContext.Fatalf("body=%q want=%q", string(responseBytes), "ADAPT_OK_NO_TEMP")
 	}
 }
 
-func TestAdaptive_RemovesToolsOn400(t *testing.T) {
-	router := newAdaptiveRouter(t, "tools")
-	srv := httptest.NewServer(router)
-	t.Cleanup(srv.Close)
+func TestAdaptive_RemovesToolsOn400(testingContext *testing.T) {
+	router := newAdaptiveRouter(testingContext, "tools")
+	testServer := httptest.NewServer(router)
+	testingContext.Cleanup(testServer.Close)
 
-	u, _ := url.Parse(srv.URL)
-	q := u.Query()
-	q.Set("prompt", "ping")
-	q.Set("key", "sekret")
-	q.Set("model", "gpt-5-mini")
-	q.Set("web_search", "1")
-	u.RawQuery = q.Encode()
+	parsedURL, _ := url.Parse(testServer.URL)
+	queryValues := parsedURL.Query()
+	queryValues.Set("prompt", "ping")
+	queryValues.Set("key", "sekret")
+	queryValues.Set("model", "gpt-5-mini")
+	queryValues.Set("web_search", "1")
+	parsedURL.RawQuery = queryValues.Encode()
 
-	res, err := http.Get(u.String())
+	httpResponse, err := http.Get(parsedURL.String())
 	if err != nil {
-		t.Fatalf("GET failed: %v", err)
+		testingContext.Fatalf("GET failed: %v", err)
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		var buf bytes.Buffer
-		_, _ = io.Copy(&buf, res.Body)
-		t.Fatalf("status=%d body=%q", res.StatusCode, buf.String())
+	defer httpResponse.Body.Close()
+	if httpResponse.StatusCode != http.StatusOK {
+		var buffer bytes.Buffer
+		_, _ = io.Copy(&buffer, httpResponse.Body)
+		testingContext.Fatalf("status=%d body=%q", httpResponse.StatusCode, buffer.String())
 	}
-	b, _ := io.ReadAll(res.Body)
-	if string(b) != "ADAPT_OK_NO_TOOLS" {
-		t.Fatalf("body=%q want=%q", string(b), "ADAPT_OK_NO_TOOLS")
+	responseBytes, _ := io.ReadAll(httpResponse.Body)
+	if string(responseBytes) != "ADAPT_OK_NO_TOOLS" {
+		testingContext.Fatalf("body=%q want=%q", string(responseBytes), "ADAPT_OK_NO_TOOLS")
 	}
 }

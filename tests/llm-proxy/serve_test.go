@@ -13,16 +13,18 @@ import (
 	"go.uber.org/zap"
 )
 
-type roundTripperFunc func(req *http.Request) (*http.Response, error)
+type roundTripperFunc func(httpRequest *http.Request) (*http.Response, error)
 
-func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+func (transport roundTripperFunc) RoundTrip(httpRequest *http.Request) (*http.Response, error) {
+	return transport(httpRequest)
+}
 
 // newRouterWithStubbedOpenAI returns a router that uses a stubbed OpenAI backend.
-func newRouterWithStubbedOpenAI(t *testing.T, modelsBody, responsesBody string) *gin.Engine {
-	t.Helper()
+func newRouterWithStubbedOpenAI(testingContext *testing.T, modelsBody, responsesBody string) *gin.Engine {
+	testingContext.Helper()
 
 	orig := proxy.HTTPClient
-	t.Cleanup(func() { proxy.HTTPClient = orig })
+	testingContext.Cleanup(func() { proxy.HTTPClient = orig })
 
 	proxy.HTTPClient = &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
@@ -60,70 +62,71 @@ func newRouterWithStubbedOpenAI(t *testing.T, modelsBody, responsesBody string) 
 		QueueSize:     4,
 	}, logger.Sugar())
 	if err != nil {
-		t.Fatalf("BuildRouter error: %v", err)
+		testingContext.Fatalf("BuildRouter error: %v", err)
 	}
 	return router
 }
 
-func TestEndpoint_Empty200TreatedAsError(t *testing.T) {
+func TestEndpoint_Empty200TreatedAsError(testingContext *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	proxy.SetModelsURL("https://mock.local/v1/models")
 	proxy.SetResponsesURL("https://mock.local/v1/responses")
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	testingContext.Cleanup(proxy.ResetModelsURL)
+	testingContext.Cleanup(proxy.ResetResponsesURL)
 
 	router := newRouterWithStubbedOpenAI(
-		t,
+		testingContext,
 		`{"data":[{"id":"gpt-4.1"}]}`,
 		`{"output":[]}`,
 	)
 
-	srv := httptest.NewServer(router)
-	t.Cleanup(srv.Close)
+	testServer := httptest.NewServer(router)
+	testingContext.Cleanup(testServer.Close)
 
-	req, _ := http.NewRequest("GET", srv.URL+"/?prompt=test&key=sekret", nil)
-	res, err := http.DefaultClient.Do(req)
+	httpRequest, _ := http.NewRequest("GET", testServer.URL+"/?prompt=test&key=sekret", nil)
+	httpResponse, err := http.DefaultClient.Do(httpRequest)
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		testingContext.Fatalf("request failed: %v", err)
 	}
-	defer res.Body.Close()
+	defer httpResponse.Body.Close()
 
-	if res.StatusCode != http.StatusBadGateway {
-		t.Fatalf("status=%d want=%d", res.StatusCode, http.StatusBadGateway)
+	if httpResponse.StatusCode != http.StatusBadGateway {
+		testingContext.Fatalf("status=%d want=%d", httpResponse.StatusCode, http.StatusBadGateway)
 	}
 }
 
-func TestEndpoint_RespectsAcceptHeaderCSV(t *testing.T) {
+func TestEndpoint_RespectsAcceptHeaderCSV(testingContext *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	proxy.SetModelsURL("https://mock.local/v1/models")
 	proxy.SetResponsesURL("https://mock.local/v1/responses")
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	testingContext.Cleanup(proxy.ResetModelsURL)
+	testingContext.Cleanup(proxy.ResetResponsesURL)
 
 	router := newRouterWithStubbedOpenAI(
-		t,
+		testingContext,
 		`{"data":[{"id":"gpt-4.1"}]}`,
 		`{"output_text":"Hello, world!"}`,
 	)
 
-	srv := httptest.NewServer(router)
-	t.Cleanup(srv.Close)
+	testServer := httptest.NewServer(router)
+	testingContext.Cleanup(testServer.Close)
 
-	req, _ := http.NewRequest("GET", srv.URL+"/?prompt=anything&key=sekret", nil)
-	req.Header.Set("Accept", "text/csv")
-	res, err := http.DefaultClient.Do(req)
+	httpRequest, _ := http.NewRequest("GET", testServer.URL+"/?prompt=anything&key=sekret", nil)
+	httpRequest.Header.Set("Accept", "text/csv")
+	httpResponse, err := http.DefaultClient.Do(httpRequest)
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		testingContext.Fatalf("request failed: %v", err)
 	}
-	defer res.Body.Close()
+	defer httpResponse.Body.Close()
 
-	if ct := res.Header.Get("Content-Type"); ct != "text/csv" {
-		t.Fatalf("content-type=%q want=%q", ct, "text/csv")
+	contentType := httpResponse.Header.Get("Content-Type")
+	if contentType != "text/csv" {
+		testingContext.Fatalf("content-type=%q want=%q", contentType, "text/csv")
 	}
-	b, _ := io.ReadAll(res.Body)
-	if got := string(b); got != "\"Hello, world!\"\n" {
-		t.Fatalf("body=%q want=%q", got, "\"Hello, world!\"\n")
+	responseBytes, _ := io.ReadAll(httpResponse.Body)
+	if bodyText := string(responseBytes); bodyText != "\"Hello, world!\"\n" {
+		testingContext.Fatalf("body=%q want=%q", bodyText, "\"Hello, world!\"\n")
 	}
 }

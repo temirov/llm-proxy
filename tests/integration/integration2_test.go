@@ -16,18 +16,20 @@ import (
 	"go.uber.org/zap"
 )
 
-// roundTripper to stub both /models and /responses.
-type rt func(req *http.Request) (*http.Response, error)
+// roundTripperFunc stubs both /models and /responses.
+type roundTripperFunc func(httpRequest *http.Request) (*http.Response, error)
 
-func (f rt) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+func (transport roundTripperFunc) RoundTrip(httpRequest *http.Request) (*http.Response, error) {
+	return transport(httpRequest)
+}
 
-func makeHTTPClient(t *testing.T, wantWebSearch bool) (*http.Client, *map[string]any) {
-	t.Helper()
+func makeHTTPClient(testingContext *testing.T, wantWebSearch bool) (*http.Client, *map[string]any) {
+	testingContext.Helper()
 	var captured map[string]any
 
 	return &http.Client{
-		Transport: rt(func(req *http.Request) (*http.Response, error) {
-			switch req.URL.String() {
+		Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
+			switch httpRequest.URL.String() {
 			case proxy.ModelsURL():
 				// Return known models so validator passes for tests using gpt-4.1 and gpt-5-mini.
 				body := `{"data":[{"id":"gpt-4.1"},{"id":"gpt-5-mini"}]}`
@@ -38,8 +40,8 @@ func makeHTTPClient(t *testing.T, wantWebSearch bool) (*http.Client, *map[string
 				}, nil
 			case proxy.ResponsesURL():
 				// Capture JSON payload to assert tools presence.
-				if req.Body != nil {
-					buf, _ := io.ReadAll(req.Body)
+				if httpRequest.Body != nil {
+					buf, _ := io.ReadAll(httpRequest.Body)
 					_ = json.Unmarshal(buf, &captured)
 				}
 				// Different body based on whether caller asked for search.
@@ -55,7 +57,7 @@ func makeHTTPClient(t *testing.T, wantWebSearch bool) (*http.Client, *map[string
 				}, nil
 			default:
 				// If an unexpected URL is hit, fail loudly.
-				t.Fatalf("unexpected request to %s", req.URL.String())
+				testingContext.Fatalf("unexpected request to %s", httpRequest.URL.String())
 				return nil, nil
 			}
 		}),
@@ -63,21 +65,21 @@ func makeHTTPClient(t *testing.T, wantWebSearch bool) (*http.Client, *map[string
 	}, &captured
 }
 
-func newLogger(t *testing.T) *zap.SugaredLogger {
-	t.Helper()
-	l, _ := zap.NewDevelopment()
-	t.Cleanup(func() { _ = l.Sync() })
-	return l.Sugar()
+func newLogger(testingContext *testing.T) *zap.SugaredLogger {
+	testingContext.Helper()
+	logger, _ := zap.NewDevelopment()
+	testingContext.Cleanup(func() { _ = logger.Sync() })
+	return logger.Sugar()
 }
 
-func TestIntegration_ResponseDelivered_Plain(t *testing.T) {
+func TestIntegration_ResponseDelivered_Plain(testingContext *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	proxy.HTTPClient, _ = makeHTTPClient(t, false)
+	proxy.HTTPClient, _ = makeHTTPClient(testingContext, false)
 	proxy.SetModelsURL("https://mock.local/v1/models")
 	proxy.SetResponsesURL("https://mock.local/v1/responses")
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	testingContext.Cleanup(proxy.ResetModelsURL)
+	testingContext.Cleanup(proxy.ResetResponsesURL)
 
 	router, err := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: "sekret",
@@ -85,43 +87,43 @@ func TestIntegration_ResponseDelivered_Plain(t *testing.T) {
 		LogLevel:      "debug",
 		WorkerCount:   1,
 		QueueSize:     8,
-	}, newLogger(t))
+	}, newLogger(testingContext))
 	if err != nil {
-		t.Fatalf("BuildRouter failed: %v", err)
+		testingContext.Fatalf("BuildRouter failed: %v", err)
 	}
 
-	srv := httptest.NewServer(router)
-	t.Cleanup(srv.Close)
+	testServer := httptest.NewServer(router)
+	testingContext.Cleanup(testServer.Close)
 
-	u, _ := url.Parse(srv.URL)
-	q := u.Query()
-	q.Set("prompt", "ping")
-	q.Set("key", "sekret")
-	u.RawQuery = q.Encode()
+	parsedURL, _ := url.Parse(testServer.URL)
+	queryValues := parsedURL.Query()
+	queryValues.Set("prompt", "ping")
+	queryValues.Set("key", "sekret")
+	parsedURL.RawQuery = queryValues.Encode()
 
-	res, err := http.Get(u.String())
+	httpResponse, err := http.Get(parsedURL.String())
 	if err != nil {
-		t.Fatalf("GET failed: %v", err)
+		testingContext.Fatalf("GET failed: %v", err)
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("status=%d want=%d", res.StatusCode, http.StatusOK)
+	defer httpResponse.Body.Close()
+	if httpResponse.StatusCode != http.StatusOK {
+		testingContext.Fatalf("status=%d want=%d", httpResponse.StatusCode, http.StatusOK)
 	}
-	b, _ := io.ReadAll(res.Body)
-	if string(b) != "INTEGRATION_OK" {
-		t.Fatalf("body=%q want=%q", string(b), "INTEGRATION_OK")
+	responseBytes, _ := io.ReadAll(httpResponse.Body)
+	if string(responseBytes) != "INTEGRATION_OK" {
+		testingContext.Fatalf("body=%q want=%q", string(responseBytes), "INTEGRATION_OK")
 	}
 }
 
-func TestIntegration_WebSearch_SendsTool(t *testing.T) {
+func TestIntegration_WebSearch_SendsTool(testingContext *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	client, captured := makeHTTPClient(t, true)
+	client, captured := makeHTTPClient(testingContext, true)
 	proxy.HTTPClient = client
 	proxy.SetModelsURL("https://mock.local/v1/models")
 	proxy.SetResponsesURL("https://mock.local/v1/responses")
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	testingContext.Cleanup(proxy.ResetModelsURL)
+	testingContext.Cleanup(proxy.ResetResponsesURL)
 
 	router, err := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: "sekret",
@@ -129,70 +131,70 @@ func TestIntegration_WebSearch_SendsTool(t *testing.T) {
 		LogLevel:      "debug",
 		WorkerCount:   1,
 		QueueSize:     8,
-	}, newLogger(t))
+	}, newLogger(testingContext))
 	if err != nil {
-		t.Fatalf("BuildRouter failed: %v", err)
+		testingContext.Fatalf("BuildRouter failed: %v", err)
 	}
 
-	srv := httptest.NewServer(router)
-	t.Cleanup(srv.Close)
+	testServer := httptest.NewServer(router)
+	testingContext.Cleanup(testServer.Close)
 
-	u, _ := url.Parse(srv.URL)
-	q := u.Query()
-	q.Set("prompt", "ping")
-	q.Set("key", "sekret")
-	q.Set("web_search", "1")
-	u.RawQuery = q.Encode()
+	parsedURL, _ := url.Parse(testServer.URL)
+	queryValues := parsedURL.Query()
+	queryValues.Set("prompt", "ping")
+	queryValues.Set("key", "sekret")
+	queryValues.Set("web_search", "1")
+	parsedURL.RawQuery = queryValues.Encode()
 
-	res, err := http.Get(u.String())
+	httpResponse, err := http.Get(parsedURL.String())
 	if err != nil {
-		t.Fatalf("GET failed: %v", err)
+		testingContext.Fatalf("GET failed: %v", err)
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("status=%d want=%d", res.StatusCode, http.StatusOK)
+	defer httpResponse.Body.Close()
+	if httpResponse.StatusCode != http.StatusOK {
+		testingContext.Fatalf("status=%d want=%d", httpResponse.StatusCode, http.StatusOK)
 	}
-	b, _ := io.ReadAll(res.Body)
-	if string(b) != "SEARCH_OK" {
-		t.Fatalf("body=%q want=%q", string(b), "SEARCH_OK")
+	responseBytes, _ := io.ReadAll(httpResponse.Body)
+	if string(responseBytes) != "SEARCH_OK" {
+		testingContext.Fatalf("body=%q want=%q", string(responseBytes), "SEARCH_OK")
 	}
 
 	// Assert tool was sent.
-	tools, ok := (*captured)["tools"].([]any)
-	if !ok || len(tools) == 0 {
-		t.Fatalf("tools missing in payload when web_search=1; captured=%v", *captured)
+	tools, toolsFound := (*captured)["tools"].([]any)
+	if !toolsFound || len(tools) == 0 {
+		testingContext.Fatalf("tools missing in payload when web_search=1; captured=%v", *captured)
 	}
-	first, _ := tools[0].(map[string]any)
-	if first["type"] != "web_search" {
-		t.Fatalf("tool type=%v want=web_search", first["type"])
+	firstTool, _ := tools[0].(map[string]any)
+	if firstTool["type"] != "web_search" {
+		testingContext.Fatalf("tool type=%v want=web_search", firstTool["type"])
 	}
 }
 
-func TestIntegration_RejectsWrongKeyAndMissingSecrets(t *testing.T) {
+func TestIntegration_RejectsWrongKeyAndMissingSecrets(testingContext *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	// First, BuildRouter should fail if missing secrets.
 	_, err := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: "",
 		OpenAIKey:     "sk-test",
-	}, newLogger(t))
+	}, newLogger(testingContext))
 	if err == nil || !strings.Contains(err.Error(), "SERVICE_SECRET") {
-		t.Fatalf("expected SERVICE_SECRET error, got %v", err)
+		testingContext.Fatalf("expected SERVICE_SECRET error, got %v", err)
 	}
 	_, err = proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: "sekret",
 		OpenAIKey:     "",
-	}, newLogger(t))
+	}, newLogger(testingContext))
 	if err == nil || !strings.Contains(err.Error(), "OPENAI_API_KEY") {
-		t.Fatalf("expected OPENAI_API_KEY error, got %v", err)
+		testingContext.Fatalf("expected OPENAI_API_KEY error, got %v", err)
 	}
 
-	// With correct config, wrong key should 403.
-	proxy.HTTPClient, _ = makeHTTPClient(t, false)
+	// With correct config, wrong key should return forbidden status.
+	proxy.HTTPClient, _ = makeHTTPClient(testingContext, false)
 	proxy.SetModelsURL("https://mock.local/v1/models")
 	proxy.SetResponsesURL("https://mock.local/v1/responses")
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	testingContext.Cleanup(proxy.ResetModelsURL)
+	testingContext.Cleanup(proxy.ResetResponsesURL)
 
 	router, err := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: "sekret",
@@ -200,27 +202,27 @@ func TestIntegration_RejectsWrongKeyAndMissingSecrets(t *testing.T) {
 		LogLevel:      "debug",
 		WorkerCount:   1,
 		QueueSize:     4,
-	}, newLogger(t))
+	}, newLogger(testingContext))
 	if err != nil {
-		t.Fatalf("BuildRouter failed: %v", err)
+		testingContext.Fatalf("BuildRouter failed: %v", err)
 	}
-	srv := httptest.NewServer(router)
-	t.Cleanup(srv.Close)
+	testServer := httptest.NewServer(router)
+	testingContext.Cleanup(testServer.Close)
 
-	u, _ := url.Parse(srv.URL)
-	q := u.Query()
-	q.Set("prompt", "ping")
-	q.Set("key", "wrong")
-	u.RawQuery = q.Encode()
+	parsedURL, _ := url.Parse(testServer.URL)
+	queryValues := parsedURL.Query()
+	queryValues.Set("prompt", "ping")
+	queryValues.Set("key", "wrong")
+	parsedURL.RawQuery = queryValues.Encode()
 
-	res, err := http.Get(u.String())
+	httpResponse, err := http.Get(parsedURL.String())
 	if err != nil {
-		t.Fatalf("GET failed: %v", err)
+		testingContext.Fatalf("GET failed: %v", err)
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusForbidden {
-		var buf bytes.Buffer
-		_, _ = io.Copy(&buf, res.Body)
-		t.Fatalf("status=%d want=%d body=%q", res.StatusCode, http.StatusForbidden, buf.String())
+	defer httpResponse.Body.Close()
+	if httpResponse.StatusCode != http.StatusForbidden {
+		var buffer bytes.Buffer
+		_, _ = io.Copy(&buffer, httpResponse.Body)
+		testingContext.Fatalf("status=%d want=%d body=%q", httpResponse.StatusCode, http.StatusForbidden, buffer.String())
 	}
 }

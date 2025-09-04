@@ -12,24 +12,24 @@ import (
 	"go.uber.org/zap"
 )
 
-func TestIntegration_WebSearch_UnsupportedModel_Returns400(t *testing.T) {
-	openAISrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestIntegration_WebSearch_UnsupportedModel_Returns400(testingContext *testing.T) {
+	openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch {
-		case strings.HasSuffix(r.URL.Path, "/v1/models"):
-			io.WriteString(w, `{"data":[{"id":"gpt-4o-mini"},{"id":"gpt-4o"}]}`)
-		case strings.HasSuffix(r.URL.Path, "/v1/responses"):
-			io.WriteString(w, `{"output_text":"SHOULD_NOT_BE_CALLED"}`)
+		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
+			io.WriteString(responseWriter, `{"data":[{"id":"gpt-4o-mini"},{"id":"gpt-4o"}]}`)
+		case strings.HasSuffix(httpRequest.URL.Path, "/v1/responses"):
+			io.WriteString(responseWriter, `{"output_text":"SHOULD_NOT_BE_CALLED"}`)
 		default:
-			http.NotFound(w, r)
+			http.NotFound(responseWriter, httpRequest)
 		}
 	}))
-	defer openAISrv.Close()
+	defer openAIServer.Close()
 
-	proxy.SetModelsURL(openAISrv.URL + "/v1/models")
-	proxy.SetResponsesURL(openAISrv.URL + "/v1/responses")
-	proxy.HTTPClient = openAISrv.Client()
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	proxy.SetModelsURL(openAIServer.URL + "/v1/models")
+	proxy.SetResponsesURL(openAIServer.URL + "/v1/responses")
+	proxy.HTTPClient = openAIServer.Client()
+	testingContext.Cleanup(proxy.ResetModelsURL)
+	testingContext.Cleanup(proxy.ResetResponsesURL)
 
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
@@ -42,55 +42,55 @@ func TestIntegration_WebSearch_UnsupportedModel_Returns400(t *testing.T) {
 		QueueSize:     4,
 	}, logger.Sugar())
 	if err != nil {
-		t.Fatalf("BuildRouter error: %v", err)
+		testingContext.Fatalf("BuildRouter error: %v", err)
 	}
 
-	app := httptest.NewServer(router)
-	defer app.Close()
+	applicationServer := httptest.NewServer(router)
+	defer applicationServer.Close()
 
-	req, _ := http.NewRequest("GET", app.URL+"/?prompt=x&key=sekret&model=gpt-4o-mini&web_search=1", nil)
-	res, err := http.DefaultClient.Do(req)
+	httpRequest, _ := http.NewRequest("GET", applicationServer.URL+"/?prompt=x&key=sekret&model=gpt-4o-mini&web_search=1", nil)
+	httpResponse, err := http.DefaultClient.Do(httpRequest)
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		testingContext.Fatalf("request failed: %v", err)
 	}
-	defer res.Body.Close()
+	defer httpResponse.Body.Close()
 
-	if res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status=%d want=%d", res.StatusCode, http.StatusBadRequest)
+	if httpResponse.StatusCode != http.StatusBadRequest {
+		testingContext.Fatalf("status=%d want=%d", httpResponse.StatusCode, http.StatusBadRequest)
 	}
-	body, _ := io.ReadAll(res.Body)
-	if !strings.Contains(string(body), "web_search is not supported") {
-		t.Fatalf("body=%q missing capability message", string(body))
+	responseBody, _ := io.ReadAll(httpResponse.Body)
+	if !strings.Contains(string(responseBody), "web_search is not supported") {
+		testingContext.Fatalf("body=%q missing capability message", string(responseBody))
 	}
 }
 
-func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(t *testing.T) {
+func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(testingContext *testing.T) {
 	var observed any
 
-	openAISrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch {
-		case strings.HasSuffix(r.URL.Path, "/v1/models"):
-			io.WriteString(w, `{"data":[{"id":"gpt-5-mini"}]}`)
-		case strings.HasSuffix(r.URL.Path, "/v1/responses"):
-			body, _ := io.ReadAll(r.Body)
+		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
+			io.WriteString(responseWriter, `{"data":[{"id":"gpt-5-mini"}]}`)
+		case strings.HasSuffix(httpRequest.URL.Path, "/v1/responses"):
+			body, _ := io.ReadAll(httpRequest.Body)
 			_ = json.Unmarshal(body, &observed)
 			if strings.Contains(string(body), `"temperature"`) {
-				w.WriteHeader(http.StatusBadRequest)
-				io.WriteString(w, `{"error":{"message":"Unsupported parameter: 'temperature'"}}`)
+				responseWriter.WriteHeader(http.StatusBadRequest)
+				io.WriteString(responseWriter, `{"error":{"message":"Unsupported parameter: 'temperature'"}}`)
 				return
 			}
-			io.WriteString(w, `{"output_text":"TEMPLESS_OK"}`)
+			io.WriteString(responseWriter, `{"output_text":"TEMPLESS_OK"}`)
 		default:
-			http.NotFound(w, r)
+			http.NotFound(responseWriter, httpRequest)
 		}
 	}))
-	defer openAISrv.Close()
+	defer openAIServer.Close()
 
-	proxy.SetModelsURL(openAISrv.URL + "/v1/models")
-	proxy.SetResponsesURL(openAISrv.URL + "/v1/responses")
-	proxy.HTTPClient = openAISrv.Client()
-	t.Cleanup(proxy.ResetModelsURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	proxy.SetModelsURL(openAIServer.URL + "/v1/models")
+	proxy.SetResponsesURL(openAIServer.URL + "/v1/responses")
+	proxy.HTTPClient = openAIServer.Client()
+	testingContext.Cleanup(proxy.ResetModelsURL)
+	testingContext.Cleanup(proxy.ResetResponsesURL)
 
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
@@ -103,24 +103,24 @@ func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(t *te
 		QueueSize:     4,
 	}, logger.Sugar())
 	if err != nil {
-		t.Fatalf("BuildRouter error: %v", err)
+		testingContext.Fatalf("BuildRouter error: %v", err)
 	}
 
-	app := httptest.NewServer(router)
-	defer app.Close()
+	applicationServer := httptest.NewServer(router)
+	defer applicationServer.Close()
 
-	res, err := http.Get(app.URL + "/?prompt=hello&key=sekret&model=gpt-5-mini")
+	httpResponse, err := http.Get(applicationServer.URL + "/?prompt=hello&key=sekret&model=gpt-5-mini")
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		testingContext.Fatalf("request failed: %v", err)
 	}
-	defer res.Body.Close()
+	defer httpResponse.Body.Close()
 
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		t.Fatalf("status=%d body=%s", res.StatusCode, string(b))
+	if httpResponse.StatusCode != http.StatusOK {
+		responseBodyBytes, _ := io.ReadAll(httpResponse.Body)
+		testingContext.Fatalf("status=%d body=%s", httpResponse.StatusCode, string(responseBodyBytes))
 	}
-	b, _ := io.ReadAll(res.Body)
-	if strings.TrimSpace(string(b)) != "TEMPLESS_OK" {
-		t.Fatalf("body=%q want %q", string(b), "TEMPLESS_OK")
+	responseBodyBytes, _ := io.ReadAll(httpResponse.Body)
+	if strings.TrimSpace(string(responseBodyBytes)) != "TEMPLESS_OK" {
+		testingContext.Fatalf("body=%q want %q", string(responseBodyBytes), "TEMPLESS_OK")
 	}
 }
