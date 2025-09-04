@@ -29,7 +29,7 @@ func newModelValidator(openAIKey string, structuredLogger *zap.SugaredLogger) (*
 }
 
 func (validator *modelValidator) refresh() error {
-	httpRequest, requestError := http.NewRequest(http.MethodGet, ModelsURL, nil)
+	httpRequest, requestError := http.NewRequest(http.MethodGet, modelsURL, nil)
 	if requestError != nil {
 		return requestError
 	}

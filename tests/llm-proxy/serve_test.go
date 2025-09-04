@@ -27,13 +27,13 @@ func newRouterWithStubbedOpenAI(t *testing.T, modelsBody, responsesBody string) 
 	proxy.HTTPClient = &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 			switch request.URL.String() {
-			case proxy.ModelsURL:
+			case proxy.ModelsURL():
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Body:       io.NopCloser(strings.NewReader(modelsBody)),
 					Header:     make(http.Header),
 				}, nil
-			case proxy.ResponsesURL:
+			case proxy.ResponsesURL():
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Body:       io.NopCloser(strings.NewReader(responsesBody)),
@@ -68,8 +68,10 @@ func newRouterWithStubbedOpenAI(t *testing.T, modelsBody, responsesBody string) 
 func TestEndpoint_Empty200TreatedAsError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	proxy.ModelsURL = "https://mock.local/v1/models"
-	proxy.ResponsesURL = "https://mock.local/v1/responses"
+	proxy.SetModelsURL("https://mock.local/v1/models")
+	proxy.SetResponsesURL("https://mock.local/v1/responses")
+	t.Cleanup(proxy.ResetModelsURL)
+	t.Cleanup(proxy.ResetResponsesURL)
 
 	router := newRouterWithStubbedOpenAI(
 		t,
@@ -95,8 +97,10 @@ func TestEndpoint_Empty200TreatedAsError(t *testing.T) {
 func TestEndpoint_RespectsAcceptHeaderCSV(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	proxy.ModelsURL = "https://mock.local/v1/models"
-	proxy.ResponsesURL = "https://mock.local/v1/responses"
+	proxy.SetModelsURL("https://mock.local/v1/models")
+	proxy.SetResponsesURL("https://mock.local/v1/responses")
+	t.Cleanup(proxy.ResetModelsURL)
+	t.Cleanup(proxy.ResetResponsesURL)
 
 	router := newRouterWithStubbedOpenAI(
 		t,

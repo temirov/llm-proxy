@@ -20,8 +20,6 @@ type HTTPDoer interface {
 
 var (
 	HTTPClient          HTTPDoer = http.DefaultClient
-	ResponsesURL                 = "https://api.openai.com/v1/responses"
-	ModelsURL                    = "https://api.openai.com/v1/models"
 	maxOutputTokens              = DefaultMaxOutputTokens
 	upstreamPollTimeout          = 10 * time.Second
 )
@@ -63,7 +61,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return "", errors.New(errorRequestBuild)
 	}
 
-	httpRequest, buildError := buildAuthorizedJSONRequest(http.MethodPost, ResponsesURL, openAIKey, bytes.NewReader(payloadBytes))
+	httpRequest, buildError := buildAuthorizedJSONRequest(http.MethodPost, responsesURL, openAIKey, bytes.NewReader(payloadBytes))
 	if buildError != nil {
 		structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildError)
 		return "", errors.New(errorRequestBuild)
@@ -84,7 +82,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 			structuredLogger.Errorw(logEventMarshalRequestPayload, "err", marshalRetryError)
 			return "", errors.New(errorRequestBuild)
 		}
-		retryRequest, buildRetryError := buildAuthorizedJSONRequest(http.MethodPost, ResponsesURL, openAIKey, bytes.NewReader(retryPayloadBytes))
+		retryRequest, buildRetryError := buildAuthorizedJSONRequest(http.MethodPost, responsesURL, openAIKey, bytes.NewReader(retryPayloadBytes))
 		if buildRetryError != nil {
 			structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildRetryError)
 			return "", errors.New(errorRequestBuild)
@@ -106,7 +104,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 			structuredLogger.Errorw(logEventMarshalRequestPayload, "err", marshalRetryError)
 			return "", errors.New(errorRequestBuild)
 		}
-		retryRequest, buildRetryError := buildAuthorizedJSONRequest(http.MethodPost, ResponsesURL, openAIKey, bytes.NewReader(retryPayloadBytes))
+		retryRequest, buildRetryError := buildAuthorizedJSONRequest(http.MethodPost, responsesURL, openAIKey, bytes.NewReader(retryPayloadBytes))
 		if buildRetryError != nil {
 			structuredLogger.Errorw(logEventBuildHTTPRequest, "err", buildRetryError)
 			return "", errors.New(errorRequestBuild)
@@ -186,7 +184,7 @@ func pollResponseUntilDone(openAIKey string, responseIdentifier string, structur
 
 // fetchResponseByID retrieves a response by identifier and reports whether the response is complete.
 func fetchResponseByID(contextToUse context.Context, openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, bool, error) {
-	resourceURL := ResponsesURL + "/" + responseIdentifier
+	resourceURL := responsesURL + "/" + responseIdentifier
 	httpRequest, buildError := buildAuthorizedJSONRequest(http.MethodGet, resourceURL, openAIKey, nil)
 	if buildError != nil {
 		return "", false, buildError

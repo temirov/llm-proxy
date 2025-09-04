@@ -25,9 +25,11 @@ func TestIntegration_WebSearch_UnsupportedModel_Returns400(t *testing.T) {
 	}))
 	defer openAISrv.Close()
 
-	proxy.ModelsURL = openAISrv.URL + "/v1/models"
-	proxy.ResponsesURL = openAISrv.URL + "/v1/responses"
+	proxy.SetModelsURL(openAISrv.URL + "/v1/models")
+	proxy.SetResponsesURL(openAISrv.URL + "/v1/responses")
 	proxy.HTTPClient = openAISrv.Client()
+	t.Cleanup(proxy.ResetModelsURL)
+	t.Cleanup(proxy.ResetResponsesURL)
 
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
@@ -84,9 +86,11 @@ func TestIntegration_TemperatureUnsupportedModel_RetriesWithoutTemperature(t *te
 	}))
 	defer openAISrv.Close()
 
-	proxy.ModelsURL = openAISrv.URL + "/v1/models"
-	proxy.ResponsesURL = openAISrv.URL + "/v1/responses"
+	proxy.SetModelsURL(openAISrv.URL + "/v1/models")
+	proxy.SetResponsesURL(openAISrv.URL + "/v1/responses")
 	proxy.HTTPClient = openAISrv.Client()
+	t.Cleanup(proxy.ResetModelsURL)
+	t.Cleanup(proxy.ResetResponsesURL)
 
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
