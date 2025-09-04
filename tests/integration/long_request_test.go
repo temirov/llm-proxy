@@ -48,33 +48,36 @@ func makeSlowHTTPClient(testingInstance *testing.T) *http.Client {
 	}
 }
 
-// TestIntegration_ResponseDeliveredAfterDelay verifies responses are sent after long upstream delays.
-func TestIntegration_ResponseDeliveredAfterDelay(testingInstance *testing.T) {
+// TestIntegrationResponseDeliveredAfterDelay verifies responses are sent after long upstream delays.
+func TestIntegrationResponseDeliveredAfterDelay(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
-	proxy.HTTPClient = makeSlowHTTPClient(testingInstance)
-	proxy.SetModelsURL(mockModelsURL)
-	proxy.SetResponsesURL(mockResponsesURL)
-	router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: "debug", WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: requestTimeoutSecondsDefault}, newLogger(testingInstance))
-	if buildError != nil {
-		testingInstance.Fatalf("BuildRouter failed: %v", buildError)
-	}
-	server := httptest.NewServer(router)
-	defer server.Close()
-	requestURL, _ := url.Parse(server.URL)
-	queryValues := requestURL.Query()
-	queryValues.Set(promptQueryParameter, promptValue)
-	queryValues.Set(keyQueryParameter, serviceSecretValue)
-	requestURL.RawQuery = queryValues.Encode()
-	httpResponse, requestError := http.Get(requestURL.String())
-	if requestError != nil {
-		testingInstance.Fatalf("GET failed: %v", requestError)
-	}
-	defer httpResponse.Body.Close()
-	if httpResponse.StatusCode != http.StatusOK {
-		testingInstance.Fatalf("status=%d want=%d", httpResponse.StatusCode, http.StatusOK)
-	}
-	responseBytes, _ := io.ReadAll(httpResponse.Body)
-	if string(responseBytes) != expectedResponseBody {
-		testingInstance.Fatalf("body=%q want=%q", string(responseBytes), expectedResponseBody)
+	testCases := []struct{ name string }{{name: "delayed_response"}}
+	for _, testCase := range testCases {
+		testingInstance.Run(testCase.name, func(subTest *testing.T) {
+			configureProxy(subTest, makeSlowHTTPClient(subTest))
+			router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: "debug", WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: requestTimeoutSecondsDefault}, newLogger(subTest))
+			if buildError != nil {
+				subTest.Fatalf("BuildRouter failed: %v", buildError)
+			}
+			server := httptest.NewServer(router)
+			subTest.Cleanup(server.Close)
+			requestURL, _ := url.Parse(server.URL)
+			queryValues := requestURL.Query()
+			queryValues.Set(promptQueryParameter, promptValue)
+			queryValues.Set(keyQueryParameter, serviceSecretValue)
+			requestURL.RawQuery = queryValues.Encode()
+			httpResponse, requestError := http.Get(requestURL.String())
+			if requestError != nil {
+				subTest.Fatalf("GET failed: %v", requestError)
+			}
+			defer httpResponse.Body.Close()
+			if httpResponse.StatusCode != http.StatusOK {
+				subTest.Fatalf("status=%d want=%d", httpResponse.StatusCode, http.StatusOK)
+			}
+			responseBytes, _ := io.ReadAll(httpResponse.Body)
+			if string(responseBytes) != expectedResponseBody {
+				subTest.Fatalf("body=%q want=%q", string(responseBytes), expectedResponseBody)
+			}
+		})
 	}
 }

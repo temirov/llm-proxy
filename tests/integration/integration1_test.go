@@ -5,104 +5,57 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/temirov/llm-proxy/internal/proxy"
 	"go.uber.org/zap"
 )
 
-// TestIntegration_ResponseDelivered verifies that the integration endpoint returns the upstream response text.
-func TestIntegration_ResponseDelivered(testingInstance *testing.T) {
-	openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
-		switch {
-		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
+const (
+	integrationServiceSecret = "sekret"
+	integrationOpenAIKey     = "sk-test"
+	integrationModelsPath    = "/v1/models"
+	integrationResponsesPath = "/v1/responses"
+	integrationModelListBody = `{"object":"list","data":[{"id":"gpt-4.1","object":"model"}]}`
+	integrationOKBody        = "INTEGRATION_OK"
+	integrationSearchBody    = "SEARCH_OK"
+)
+
+// newOpenAIServer returns a stub OpenAI server yielding the provided body and optionally capturing requests.
+func newOpenAIServer(testingInstance *testing.T, responseText string, captureTarget *any) *httptest.Server {
+	testingInstance.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
+		switch httpRequest.URL.Path {
+		case integrationModelsPath:
 			responseWriter.Header().Set("Content-Type", "application/json")
-			io.WriteString(responseWriter, `{"object":"list","data":[{"id":"gpt-4.1","object":"model"}]}`)
-			return
-		case strings.HasSuffix(httpRequest.URL.Path, "/v1/responses"):
+			_, _ = io.WriteString(responseWriter, integrationModelListBody)
+		case integrationResponsesPath:
+			if captureTarget != nil {
+				body, _ := io.ReadAll(httpRequest.Body)
+				_ = json.Unmarshal(body, captureTarget)
+			}
 			responseWriter.Header().Set("Content-Type", "application/json")
-			io.WriteString(responseWriter, `{"output_text":"INTEGRATION_OK"}`)
-			return
+			_, _ = io.WriteString(responseWriter, `{"output_text":"`+responseText+`"}`)
 		default:
 			http.NotFound(responseWriter, httpRequest)
-			return
 		}
 	}))
-	defer openAIServer.Close()
-
-	proxy.SetModelsURL(openAIServer.URL + "/v1/models")
-	proxy.SetResponsesURL(openAIServer.URL + "/v1/responses")
-	proxy.HTTPClient = openAIServer.Client()
-	testingInstance.Cleanup(proxy.ResetModelsURL)
-	testingInstance.Cleanup(proxy.ResetResponsesURL)
-
-	logger, _ := zap.NewDevelopment()
-	defer logger.Sync()
-	router, err := proxy.BuildRouter(proxy.Configuration{
-		ServiceSecret: "sekret",
-		OpenAIKey:     "sk-test",
-		LogLevel:      "debug",
-		WorkerCount:   1,
-		QueueSize:     4,
-	}, logger.Sugar())
-	if err != nil {
-		testingInstance.Fatalf("BuildRouter error: %v", err)
-	}
-
-	applicationServer := httptest.NewServer(router)
-	defer applicationServer.Close()
-
-	httpResponse, requestError := http.Get(applicationServer.URL + "/?prompt=ping&key=sekret")
-	if requestError != nil {
-		testingInstance.Fatalf("request error: %v", requestError)
-	}
-	defer httpResponse.Body.Close()
-
-	if httpResponse.StatusCode != http.StatusOK {
-		responseBody, _ := io.ReadAll(httpResponse.Body)
-		testingInstance.Fatalf("status=%d body=%s", httpResponse.StatusCode, string(responseBody))
-	}
-	responseBytes, _ := io.ReadAll(httpResponse.Body)
-	if got := strings.TrimSpace(string(responseBytes)); got != "INTEGRATION_OK" {
-		testingInstance.Fatalf("body=%q; want INTEGRATION_OK", got)
-	}
+	return server
 }
 
-// TestIntegration_ResponseDelivered_WithWebSearch verifies delivery of responses when web search is requested.
-func TestIntegration_ResponseDelivered_WithWebSearch(testingInstance *testing.T) {
-	var captured any
-
-	openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
-		switch {
-		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
-			responseWriter.Header().Set("Content-Type", "application/json")
-			io.WriteString(responseWriter, `{"object":"list","data":[{"id":"gpt-4.1","object":"model"}]}`)
-			return
-		case strings.HasSuffix(httpRequest.URL.Path, "/v1/responses"):
-			body, _ := io.ReadAll(httpRequest.Body)
-			_ = json.Unmarshal(body, &captured)
-			responseWriter.Header().Set("Content-Type", "application/json")
-			io.WriteString(responseWriter, `{"output_text":"SEARCH_OK"}`)
-			return
-		default:
-			http.NotFound(responseWriter, httpRequest)
-			return
-		}
-	}))
-	defer openAIServer.Close()
-
-	proxy.SetModelsURL(openAIServer.URL + "/v1/models")
-	proxy.SetResponsesURL(openAIServer.URL + "/v1/responses")
+// newIntegrationServer builds the application server pointing at the stub OpenAI server.
+func newIntegrationServer(testingInstance *testing.T, openAIServer *httptest.Server) *httptest.Server {
+	testingInstance.Helper()
+	proxy.SetModelsURL(openAIServer.URL + integrationModelsPath)
+	proxy.SetResponsesURL(openAIServer.URL + integrationResponsesPath)
 	proxy.HTTPClient = openAIServer.Client()
 	testingInstance.Cleanup(proxy.ResetModelsURL)
 	testingInstance.Cleanup(proxy.ResetResponsesURL)
-
 	logger, _ := zap.NewDevelopment()
-	defer logger.Sync()
+	testingInstance.Cleanup(func() { _ = logger.Sync() })
 	router, err := proxy.BuildRouter(proxy.Configuration{
-		ServiceSecret: "sekret",
-		OpenAIKey:     "sk-test",
+		ServiceSecret: integrationServiceSecret,
+		OpenAIKey:     integrationOpenAIKey,
 		LogLevel:      "debug",
 		WorkerCount:   1,
 		QueueSize:     4,
@@ -110,33 +63,60 @@ func TestIntegration_ResponseDelivered_WithWebSearch(testingInstance *testing.T)
 	if err != nil {
 		testingInstance.Fatalf("BuildRouter error: %v", err)
 	}
+	server := httptest.NewServer(router)
+	testingInstance.Cleanup(server.Close)
+	return server
+}
 
-	applicationServer := httptest.NewServer(router)
-	defer applicationServer.Close()
-
-	httpResponse, requestError := http.Get(applicationServer.URL + "/?prompt=ping&key=sekret&web_search=1")
-	if requestError != nil {
-		testingInstance.Fatalf("request error: %v", requestError)
+// TestProxyResponseDelivery verifies responses with and without web search.
+func TestProxyResponseDelivery(testingInstance *testing.T) {
+	testCases := []struct {
+		name       string
+		webSearch  bool
+		body       string
+		checkTools bool
+	}{
+		{name: "plain", webSearch: false, body: integrationOKBody},
+		{name: "web_search", webSearch: true, body: integrationSearchBody, checkTools: true},
 	}
-	defer httpResponse.Body.Close()
-
-	if httpResponse.StatusCode != http.StatusOK {
-		responseBody, _ := io.ReadAll(httpResponse.Body)
-		testingInstance.Fatalf("status=%d body=%s", httpResponse.StatusCode, string(responseBody))
-	}
-	responseBytes, _ := io.ReadAll(httpResponse.Body)
-	if got := strings.TrimSpace(string(responseBytes)); got != "SEARCH_OK" {
-		testingInstance.Fatalf("body=%q; want SEARCH_OK", got)
-	}
-
-	// Assert that the tool was sent.
-	m, _ := captured.(map[string]any)
-	tools, ok := m["tools"].([]any)
-	if !ok || len(tools) == 0 {
-		testingInstance.Fatalf("tools missing when web_search=1")
-	}
-	first, _ := tools[0].(map[string]any)
-	if first["type"] != "web_search" {
-		testingInstance.Fatalf("tool type=%v; want web_search", first["type"])
+	for _, testCase := range testCases {
+		testingInstance.Run(testCase.name, func(subTest *testing.T) {
+			var captured any
+			var captureTarget *any
+			if testCase.checkTools {
+				captureTarget = &captured
+			}
+			openAIServer := newOpenAIServer(subTest, testCase.body, captureTarget)
+			subTest.Cleanup(openAIServer.Close)
+			applicationServer := newIntegrationServer(subTest, openAIServer)
+			requestURL := applicationServer.URL + "?prompt=ping&key=" + integrationServiceSecret
+			if testCase.webSearch {
+				requestURL += "&web_search=1"
+			}
+			httpResponse, requestError := http.Get(requestURL)
+			if requestError != nil {
+				subTest.Fatalf("request error: %v", requestError)
+			}
+			defer httpResponse.Body.Close()
+			if httpResponse.StatusCode != http.StatusOK {
+				responseBody, _ := io.ReadAll(httpResponse.Body)
+				subTest.Fatalf("status=%d body=%s", httpResponse.StatusCode, string(responseBody))
+			}
+			responseBytes, _ := io.ReadAll(httpResponse.Body)
+			if string(responseBytes) != testCase.body {
+				subTest.Fatalf("body=%q want=%q", string(responseBytes), testCase.body)
+			}
+			if testCase.checkTools {
+				mapped, _ := captured.(map[string]any)
+				tools, ok := mapped["tools"].([]any)
+				if !ok || len(tools) == 0 {
+					subTest.Fatalf("tools missing when web_search=1")
+				}
+				first, _ := tools[0].(map[string]any)
+				if first["type"] != "web_search" {
+					subTest.Fatalf("tool type=%v want=web_search", first["type"])
+				}
+			}
+		})
 	}
 }
