@@ -104,6 +104,16 @@ Supported models include any listed in `/v1/models` from the OpenAI API
 (e.g. `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`).
 Not all models support tools; for **web search**, use `gpt-4o` or `gpt-4.1`.
 
+### Model capabilities
+
+| Model | Provider | Web Search |
+|-------|----------|------------|
+| `gpt-4.1` | OpenAI | Yes |
+| `gpt-4o` | OpenAI | Yes |
+| `gpt-4o-mini` | OpenAI | No |
+| `gpt-5` | OpenAI | Yes |
+| `gpt-5-mini` | OpenAI | No |
+
 ### Status codes
 
 * `200 OK` – success
