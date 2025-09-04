@@ -38,7 +38,7 @@ func PerformHTTPRequest(do func(*http.Request) (*http.Response, error), httpRequ
 		response, httpError := do(httpRequest)
 		if httpError != nil {
 			if structuredLogger != nil {
-				structuredLogger.Errorw(logEventOnTransportError, "err", httpError)
+				structuredLogger.Errorw(logEventOnTransportError, constants.LogFieldError, httpError)
 			}
 			return httpError
 		}
@@ -51,7 +51,13 @@ func PerformHTTPRequest(do func(*http.Request) (*http.Response, error), httpRequ
 	latencyMillis := time.Since(startTime).Milliseconds()
 	if retryError != nil {
 		if structuredLogger != nil {
-			structuredLogger.Errorw(logEventOnTransportError, "err", retryError, constants.LogFieldLatencyMilliseconds, latencyMillis)
+			structuredLogger.Errorw(
+				logEventOnTransportError,
+				constants.LogFieldError,
+				retryError,
+				constants.LogFieldLatencyMilliseconds,
+				latencyMillis,
+			)
 		}
 		return 0, nil, latencyMillis, retryError
 	}
@@ -60,7 +66,7 @@ func PerformHTTPRequest(do func(*http.Request) (*http.Response, error), httpRequ
 	responseBytes, readError := io.ReadAll(httpResponse.Body)
 	if readError != nil {
 		if structuredLogger != nil {
-			structuredLogger.Errorw(constants.LogEventReadResponseBodyFailed, "err", readError)
+			structuredLogger.Errorw(constants.LogEventReadResponseBodyFailed, constants.LogFieldError, readError)
 		}
 		return httpResponse.StatusCode, nil, latencyMillis, readError
 	}
