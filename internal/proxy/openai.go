@@ -278,19 +278,61 @@ func buildAuthorizedJSONRequest(method string, url string, openAIKey string, bod
 }
 
 func performJSONRequest(httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEventOnTransportError string) (int, []byte, int64, error) {
-	startTime := time.Now()
-	httpResponse, httpError := HTTPClient.Do(httpRequest)
-	latencyMillis := time.Since(startTime).Milliseconds()
-	if httpError != nil {
-		structuredLogger.Errorw(logEventOnTransportError, "err", httpError, logFieldLatencyMs, latencyMillis)
-		return 0, nil, latencyMillis, httpError
-	}
-	defer httpResponse.Body.Close()
+	// up to 2 retries on transport error or 5xx
+	const maxRetries = 2
+	var lastCode int
+	var lastBody []byte
+	var lastLatency int64
+	var lastErr error
 
-	responseBytes, readError := io.ReadAll(httpResponse.Body)
-	if readError != nil {
-		structuredLogger.Errorw(logEventReadResponseBodyFailed, "err", readError)
-		return httpResponse.StatusCode, nil, latencyMillis, readError
+	// keep a reusable copy of the body if present
+	var bodyCopy []byte
+	if httpRequest.Body != nil {
+		buf, _ := io.ReadAll(httpRequest.Body)
+		httpRequest.Body.Close()
+		bodyCopy = buf
+		httpRequest.Body = io.NopCloser(bytes.NewReader(buf))
 	}
-	return httpResponse.StatusCode, responseBytes, latencyMillis, nil
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		start := time.Now()
+		resp, err := HTTPClient.Do(httpRequest)
+		latency := time.Since(start).Milliseconds()
+		lastLatency = latency
+
+		if err != nil {
+			lastErr = err
+			if structuredLogger != nil {
+				structuredLogger.Errorw(logEventOnTransportError, "err", err, logFieldLatencyMs, latency, "attempt", attempt)
+			}
+		} else {
+			defer resp.Body.Close()
+			b, readErr := io.ReadAll(resp.Body)
+			if readErr != nil {
+				if structuredLogger != nil {
+					structuredLogger.Errorw(logEventReadResponseBodyFailed, "err", readErr)
+				}
+				lastCode, lastBody, lastErr = resp.StatusCode, nil, readErr
+			} else {
+				// success if <500
+				if resp.StatusCode < 500 {
+					return resp.StatusCode, b, latency, nil
+				}
+				lastCode, lastBody, lastErr = resp.StatusCode, b, nil
+			}
+		}
+
+		// retry only on transport error or 5xx
+		if attempt == maxRetries {
+			break
+		}
+		time.Sleep(time.Duration(200*(1<<attempt)) * time.Millisecond)
+
+		// rebuild request body for the next round if needed
+		if bodyCopy != nil {
+			httpRequest.Body = io.NopCloser(bytes.NewReader(bodyCopy))
+		}
+	}
+
+	return lastCode, lastBody, lastLatency, lastErr
 }
