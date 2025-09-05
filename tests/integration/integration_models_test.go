@@ -31,7 +31,7 @@ func TestIntegrationModelSpecSuppression(testingInstance *testing.T) {
 				QueueSize:     8,
 			}, newLogger(subTest))
 			if buildRouterError != nil {
-				subTest.Fatalf("BuildRouter failed: %v", buildRouterError)
+				subTest.Fatalf(buildRouterFailedFormat, buildRouterError)
 			}
 			server := httptest.NewServer(router)
 			subTest.Cleanup(server.Close)
@@ -44,16 +44,16 @@ func TestIntegrationModelSpecSuppression(testingInstance *testing.T) {
 			requestURL.RawQuery = queryValues.Encode()
 			httpResponse, requestError := http.Get(requestURL.String())
 			if requestError != nil {
-				subTest.Fatalf("GET failed: %v", requestError)
+				subTest.Fatalf(getFailedFormat, requestError)
 			}
 			defer httpResponse.Body.Close()
 			_, _ = io.ReadAll(httpResponse.Body)
 			payload := *captured
 			if _, ok := payload["temperature"]; ok {
-				subTest.Fatalf("temperature must be omitted for %s, got: %v", testCase.model, payload["temperature"])
+				subTest.Fatalf(temperatureOmittedFormat, testCase.model, payload["temperature"])
 			}
 			if _, ok := payload["tools"]; ok {
-				subTest.Fatalf("tools must be omitted for %s, got: %v", testCase.model, payload["tools"])
+				subTest.Fatalf(toolsOmittedFormat, testCase.model, payload["tools"])
 			}
 			if _, hasInput := payload["input"]; !hasInput {
 				subTest.Fatalf("input must be present for responses API")
@@ -64,4 +64,44 @@ func TestIntegrationModelSpecSuppression(testingInstance *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		})
 	}
+}
+
+// TestIntegrationGPT5TemperatureSuppression verifies that temperature is omitted and tools retained for GPT-5.
+func TestIntegrationGPT5TemperatureSuppression(testingInstance *testing.T) {
+	gin.SetMode(gin.TestMode)
+	client, captured := makeHTTPClient(testingInstance, true)
+	configureProxy(testingInstance, client)
+	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
+		ServiceSecret: serviceSecretValue,
+		OpenAIKey:     openAIKeyValue,
+		LogLevel:      logLevelDebug,
+		WorkerCount:   1,
+		QueueSize:     8,
+	}, newLogger(testingInstance))
+	if buildRouterError != nil {
+		testingInstance.Fatalf(buildRouterFailedFormat, buildRouterError)
+	}
+	server := httptest.NewServer(router)
+	testingInstance.Cleanup(server.Close)
+	requestURL, _ := url.Parse(server.URL)
+	queryValues := requestURL.Query()
+	queryValues.Set(promptQueryParameter, promptValue)
+	queryValues.Set(keyQueryParameter, serviceSecretValue)
+	queryValues.Set(webSearchQueryParameter, "1")
+	queryValues.Set(adaptiveModelQueryParameter, proxy.ModelNameGPT5)
+	requestURL.RawQuery = queryValues.Encode()
+	httpResponse, requestError := http.Get(requestURL.String())
+	if requestError != nil {
+		testingInstance.Fatalf(getFailedFormat, requestError)
+	}
+	defer httpResponse.Body.Close()
+	_, _ = io.ReadAll(httpResponse.Body)
+	payload := *captured
+	if _, ok := payload["temperature"]; ok {
+		testingInstance.Fatalf(temperatureOmittedFormat, proxy.ModelNameGPT5, payload["temperature"])
+	}
+	if _, ok := payload["tools"]; !ok {
+		testingInstance.Fatalf(toolsMissingMessage)
+	}
+	time.Sleep(10 * time.Millisecond)
 }

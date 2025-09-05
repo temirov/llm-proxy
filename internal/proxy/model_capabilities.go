@@ -19,7 +19,7 @@ const (
 	ModelNameGPT41 = "gpt-4.1"
 	// ModelNameGPT5Mini identifies the GPT-5-mini model.
 	ModelNameGPT5Mini = "gpt-5-mini"
-	// ModelNameGPT5 identifies the GPT-5 model.
+	// ModelNameGPT5 identifies the GPT-5 model which does not accept the temperature field.
 	ModelNameGPT5 = "gpt-5"
 )
 
@@ -28,7 +28,7 @@ var modelSpecifications = map[string]ModelSpecification{
 	ModelNameGPT4o:     {SupportsTemperature: true, SupportsWebSearch: true},
 	ModelNameGPT41:     {SupportsTemperature: true, SupportsWebSearch: true},
 	ModelNameGPT5Mini:  {},
-	ModelNameGPT5:      {SupportsTemperature: true, SupportsWebSearch: true},
+	ModelNameGPT5:      {SupportsTemperature: false, SupportsWebSearch: true},
 }
 
 // ResolveModelSpecification returns the specification for a model or an empty specification when unknown.
