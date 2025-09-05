@@ -28,8 +28,8 @@ const (
 	mimeTextPlain       = "text/plain; charset=utf-8"
 
 	errorMissingPrompt = "missing prompt parameter"
-	// ErrorMissingClientKey indicates that the key query parameter is missing.
-	ErrorMissingClientKey   = "missing client key"
+	// errorMissingClientKey indicates that the key query parameter is missing.
+	errorMissingClientKey   = "unknown client key"
 	errorRequestTimedOut    = "request timed out"
 	errorRequestBuild       = "request build error"
 	errorOpenAIRequest      = "OpenAI request error"
