@@ -16,9 +16,7 @@ const (
 	// DefaultQueueSize is the capacity of the internal request queue.
 	DefaultQueueSize = 100
 	// DefaultModel is the model identifier used when the client does not supply one.
-	DefaultModel = "gpt-4.1"
-
-	modelsCacheTTL = 24 * time.Hour
+	DefaultModel = ModelNameGPT41
 
 	DefaultRequestTimeoutSeconds      = 60 // overall app-side request timeout
 	DefaultUpstreamPollTimeoutSeconds = 20 // poll budget after "incomplete"

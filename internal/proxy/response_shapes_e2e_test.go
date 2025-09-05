@@ -1,7 +1,6 @@
 package proxy_test
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,7 +11,7 @@ import (
 )
 
 const (
-	modelIdentifier = "gpt-4o"
+	modelIdentifier = proxy.ModelNameGPT4o
 )
 
 // withStubbedProxy spins up stub upstream servers (models + responses),
@@ -20,22 +19,14 @@ const (
 func withStubbedProxy(t *testing.T, openAIJSON string) http.Handler {
 	t.Helper()
 
-	// Stub models list: mark modelIdentifier as supported.
-	modelsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, `{"data":[{"id":"`+modelIdentifier+`"}]}`)
-	}))
-	t.Cleanup(modelsServer.Close)
-
 	// Stub responses API: always return the provided body (for both POST / and GET /{id}).
 	responsesServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, openAIJSON)
+		_, _ = w.Write([]byte(openAIJSON))
 	}))
 	t.Cleanup(responsesServer.Close)
 
-	// Point proxy at our stubs.
-	proxy.SetModelsURL(modelsServer.URL)
+	// Point proxy at our stub.
 	proxy.SetResponsesURL(responsesServer.URL)
-	t.Cleanup(proxy.ResetModelsURL)
 	t.Cleanup(proxy.ResetResponsesURL)
 
 	// Build router.

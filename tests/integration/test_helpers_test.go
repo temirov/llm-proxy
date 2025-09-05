@@ -40,13 +40,13 @@ const (
 	// integrationResponsesPath is the path for the responses endpoint.
 	integrationResponsesPath = "/v1/responses"
 	// integrationModelListBody is the JSON body returned for model listing.
-	integrationModelListBody = `{"object":"list","data":[{"id":"gpt-4.1","object":"model"}]}`
+	integrationModelListBody = `{"object":"list","data":[{"id":"` + proxy.ModelNameGPT41 + `","object":"model"}]}`
 	// integrationOKBody is the plain response used in tests.
 	integrationOKBody = "INTEGRATION_OK"
 	// integrationSearchBody is the web search response used in tests.
 	integrationSearchBody = "SEARCH_OK"
 	// availableModelsBody is the JSON body returned by the stubbed models endpoint in HTTP client tests.
-	availableModelsBody = `{"data":[{"id":"gpt-4.1"},{"id":"gpt-5-mini"}]}`
+	availableModelsBody = `{"data":[{"id":"` + proxy.ModelNameGPT41 + `"},{"id":"` + proxy.ModelNameGPT5Mini + `"}]}`
 	// contentTypeJSON is the HTTP header value for JSON payloads.
 	contentTypeJSON = "application/json"
 	// buildRouterErrorFormat is the format string used when BuildRouter returns an error.
@@ -66,13 +66,13 @@ const (
 	// toolsMissingFormat reports missing tools when the captured payload is included.
 	toolsMissingFormat = "tools missing in payload when web_search=1; captured=%v"
 	// toolTypeMismatchFormat reports an unexpected tool type.
-        toolTypeMismatchFormat = "tool type=%v want=web_search"
-       // metadataTemperatureTools provides model metadata allowing temperature and tools.
-       metadataTemperatureTools = `{"allowed_request_fields":["temperature","tools"]}`
-       // metadataEmpty provides model metadata with no allowed request fields.
-       metadataEmpty = `{"allowed_request_fields":[]}`
-        // expectedErrorFormat is used when a configuration error is expected.
-        expectedErrorFormat = "expected %s error, got %v"
+	toolTypeMismatchFormat = "tool type=%v want=web_search"
+	// metadataTemperatureTools provides model metadata allowing temperature and tools.
+	metadataTemperatureTools = `{"allowed_request_fields":["temperature","tools"]}`
+	// metadataEmpty provides model metadata with no allowed request fields.
+	metadataEmpty = `{"allowed_request_fields":[]}`
+	// expectedErrorFormat is used when a configuration error is expected.
+	expectedErrorFormat = "expected %s error, got %v"
 	// getFailedFormat reports HTTP GET request failures.
 	getFailedFormat = "GET failed: %v"
 	// statusWantFormat reports an unexpected HTTP status code.
@@ -138,27 +138,27 @@ func newIntegrationServer(testingInstance *testing.T, openAIServer *httptest.Ser
 
 // makeHTTPClient returns a stub HTTP client capturing payloads and returning canned responses.
 func makeHTTPClient(testingInstance *testing.T, wantWebSearch bool) (*http.Client, *map[string]any) {
-        testingInstance.Helper()
-        var captured map[string]any
-        return &http.Client{
-                Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
-                       switch {
-                       case httpRequest.URL.String() == proxy.ModelsURL():
-                               body := availableModelsBody
-                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
-                       case strings.HasPrefix(httpRequest.URL.String(), proxy.ModelsURL()+"/"):
-                               modelID := strings.TrimPrefix(httpRequest.URL.Path, integrationModelsPath+"/")
-                               metadata := metadataEmpty
-                               if modelID == "gpt-4.1" {
-                                       metadata = metadataTemperatureTools
-                               }
-                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadata)), Header: make(http.Header)}, nil
-                       case httpRequest.URL.String() == proxy.ResponsesURL():
-                               if httpRequest.Body != nil {
-                                       requestBytes, _ := io.ReadAll(httpRequest.Body)
-                                       _ = json.Unmarshal(requestBytes, &captured)
-                               }
-                               text := integrationOKBody
+	testingInstance.Helper()
+	var captured map[string]any
+	return &http.Client{
+		Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
+			switch {
+			case httpRequest.URL.String() == proxy.ModelsURL():
+				body := availableModelsBody
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+			case strings.HasPrefix(httpRequest.URL.String(), proxy.ModelsURL()+"/"):
+				modelID := strings.TrimPrefix(httpRequest.URL.Path, integrationModelsPath+"/")
+				metadata := metadataEmpty
+				if modelID == proxy.ModelNameGPT41 {
+					metadata = metadataTemperatureTools
+				}
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadata)), Header: make(http.Header)}, nil
+			case httpRequest.URL.String() == proxy.ResponsesURL():
+				if httpRequest.Body != nil {
+					requestBytes, _ := io.ReadAll(httpRequest.Body)
+					_ = json.Unmarshal(requestBytes, &captured)
+				}
+				text := integrationOKBody
 				if wantWebSearch {
 					text = integrationSearchBody
 				}
