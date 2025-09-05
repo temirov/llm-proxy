@@ -2,12 +2,12 @@
 const DEFAULT_PROXY_URL = 'https://llm-proxy.mprlab.com/';
 const DEFAULT_MODEL = 'gpt-5-mini';
 
-/* ====== STORAGE ====== */
+/* ====== USER SETTINGS (per-user) ====== */
 function getUserSettings_() {
   const p = PropertiesService.getUserProperties();
   return {
     proxyUrl: p.getProperty('LLM_PROXY_URL') || DEFAULT_PROXY_URL,
-    apiKeyPresent: !!p.getProperty('LLM_API_KEY'),        // do not send key to UI by default
+    apiKeyPresent: !!p.getProperty('LLM_API_KEY'),
     model: p.getProperty('LLM_MODEL') || DEFAULT_MODEL
   };
 }
@@ -15,305 +15,220 @@ function setUserSettings_(data) {
   const p = PropertiesService.getUserProperties();
   if (data.proxyUrl !== undefined) p.setProperty('LLM_PROXY_URL', String(data.proxyUrl).trim());
   if (data.model !== undefined)    p.setProperty('LLM_MODEL', String(data.model).trim());
-  if (data.apiKey !== undefined && String(data.apiKey).trim() !== '') {
+  if (data.apiKey !== undefined && String(data.apiKey).trim() !== '' && data.apiKey !== '••••••') {
     p.setProperty('LLM_API_KEY', String(data.apiKey).trim());
   }
-  // If user explicitly requests clear
-  if (data.clearKey === true) {
-    p.deleteProperty('LLM_API_KEY');
-  }
+  if (data.clearKey === true) p.deleteProperty('LLM_API_KEY');
 }
-function getApiKey_() {
-  return PropertiesService.getUserProperties().getProperty('LLM_API_KEY') || '';
-}
+function getApiKey_() { return PropertiesService.getUserProperties().getProperty('LLM_API_KEY') || ''; }
 
-/* ====== WORKSPACE ADD-ON ENTRYPOINT ======
-   Appears in right sidebar (home card) for Sheets
-*/
-function buildAddOnHomePage(e) {
+/* ====== ADD-ON UI (CardService) ====== */
+function buildAddOnHomePage() {
   const s = getUserSettings_();
-
-  const section = CardService.newCardSection()
-    .addWidget(CardService.newTextParagraph().setText('LLM Settings'));
-
-  // Proxy URL
-  section.addWidget(
-    CardService.newTextInput()
-      .setFieldName('proxyUrl')
-      .setTitle('Proxy URL')
-      .setValue(s.proxyUrl)
-      .setHint('e.g. https://llm-proxy.mprlab.com/')
+  const section = CardService.newCardSection().addWidget(
+    CardService.newTextParagraph().setText('<b>LLM Settings</b>')
   );
 
-  // API key (not prefilled)
-  section.addWidget(
-    CardService.newTextInput()
-      .setFieldName('apiKey')
-      .setTitle('API Key')
-      .setHint(s.apiKeyPresent ? 'Key is saved (leave blank to keep)' : 'Enter your key')
-  );
+  section.addWidget(CardService.newTextInput().setFieldName('proxyUrl')
+    .setTitle('Proxy URL').setValue(s.proxyUrl).setHint('e.g. https://llm-proxy.mprlab.com/'));
 
-  // Default model
-  section.addWidget(
-    CardService.newTextInput()
-      .setFieldName('model')
-      .setTitle('Default Model')
-      .setValue(s.model)
-      .setHint('e.g. gpt-5-mini')
-  );
+  section.addWidget(CardService.newTextInput().setFieldName('apiKey')
+    .setTitle('API Key').setValue(s.apiKeyPresent ? '••••••' : '')
+    .setHint(s.apiKeyPresent ? 'Key is saved (leave as •••••• or blank to keep)' : 'Enter your key'));
 
-  // Save button
-  const saveAction = CardService.newAction()
-    .setFunctionName('handleSave_');
-  section.addWidget(
-    CardService.newTextButton()
-      .setText('Save')
-      .setOnClickAction(saveAction)
-      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-  );
+  section.addWidget(CardService.newSelectionInput().setType(CardService.SelectionInputType.CHECK_BOX)
+    .setFieldName('clearKey').setTitle('Security').addItem('Clear saved key on Save', '1', false));
 
-  // Divider
+  section.addWidget(CardService.newTextInput().setFieldName('model')
+    .setTitle('Default Model').setValue(s.model).setHint('e.g. gpt-5-mini'));
+
+  section.addWidget(CardService.newTextButton().setText('Save')
+    .setOnClickAction(CardService.newAction().setFunctionName('handleSave_'))
+    .setTextButtonStyle(CardService.TextButtonStyle.FILLED));
+
   section.addWidget(CardService.newDivider());
 
-  // Regenerate selection
-  const regenAction = CardService.newAction().setFunctionName('handleRegenerate_');
-  section.addWidget(
-    CardService.newTextButton().setText('Regenerate Selection').setOnClickAction(regenAction)
-  );
+  section.addWidget(CardService.newTextButton().setText('Enable functions in this sheet')
+    .setOnClickAction(CardService.newAction().setFunctionName('handleInstallBoundFunctions_')));
 
-  // Retry errors in sheet
-  const retryAction = CardService.newAction().setFunctionName('handleRetryErrors_');
-  section.addWidget(
-    CardService.newTextButton().setText('Retry Errors In Sheet').setOnClickAction(retryAction)
-  );
+  section.addWidget(CardService.newTextButton().setText('Grant Network Access')
+    .setOnClickAction(CardService.newAction().setFunctionName('handleGrantNetwork_')));
 
-  // Grant network access (first-run OAuth)
-  const grantAction = CardService.newAction().setFunctionName('handleGrantNetwork_');
-  section.addWidget(
-    CardService.newTextButton().setText('Grant Network Access').setOnClickAction(grantAction)
-  );
+  section.addWidget(CardService.newTextButton().setText('Regenerate Selection')
+    .setOnClickAction(CardService.newAction().setFunctionName('handleRegenerate_')));
 
-  const card = CardService.newCardBuilder().addSection(section).build();
-  return card;
+  section.addWidget(CardService.newTextButton().setText('Retry Errors In Sheet')
+    .setOnClickAction(CardService.newAction().setFunctionName('handleRetryErrors_')));
+
+  return CardService.newCardBuilder().addSection(section).build();
 }
 
-/* ====== ACTION HANDLERS (UI) ====== */
 function handleSave_(e) {
   const inputs = (e && e.commonEventObject && e.commonEventObject.formInputs) || {};
-  const proxyUrl = getInput_(inputs, 'proxyUrl');
-  const apiKey   = getInput_(inputs, 'apiKey');
-  const model    = getInput_(inputs, 'model');
-
   setUserSettings_({
-    proxyUrl: proxyUrl || undefined,
-    model: model || undefined,
-    apiKey: apiKey || undefined
+    proxyUrl: getInput_(inputs, 'proxyUrl') || undefined,
+    model:    getInput_(inputs, 'model')    || undefined,
+    apiKey:   getInput_(inputs, 'apiKey')   || undefined,
+    clearKey: isChecked_(inputs, 'clearKey')
   });
-
-  const resp = CardService.newActionResponseBuilder()
-    .setNotification(CardService.newNotification().setText('Saved'))
-    .build();
-  return resp;
+  return CardService.newActionResponseBuilder()
+    .setNotification(CardService.newNotification().setText('Saved')).build();
 }
 
 function handleGrantNetwork_() {
   const s = getUserSettings_();
-  const probe = s.proxyUrl.replace(/\/?$/, '/');
   try {
-    UrlFetchApp.fetch(probe, { method: 'get', muteHttpExceptions: true, followRedirects: true });
+    UrlFetchApp.fetch(s.proxyUrl.replace(/\/?$/, '/'), { method: 'get', muteHttpExceptions: true, followRedirects: true });
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText('Network access granted.'))
-      .build();
+      .setNotification(CardService.newNotification().setText('Network access granted.')).build();
   } catch (err) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText('Grant failed: ' + String(err).slice(0, 120)))
-      .build();
+      .setNotification(CardService.newNotification().setText('Grant failed: ' + String(err).slice(0, 120))).build();
   }
 }
 
-function handleRegenerate_() {
-  regenerateSelection_();
-  return CardService.newActionResponseBuilder()
-    .setNotification(CardService.newNotification().setText('Regenerated selection'))
-    .build();
+/* ====== ONE-CLICK INSTALL OF BOUND FUNCTIONS ======
+   Uses Advanced Services: Script API + Drive API (enabled in manifest). */
+function handleInstallBoundFunctions_() {
+  try {
+    installOrUpdateBoundFunctions_();
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText('Functions installed. Reload the sheet and use =LLM().')).build();
+  } catch (err) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText('Install failed: ' + String(err).slice(0, 180))).build();
+  }
 }
 
-function handleRetryErrors_() {
-  retryErrorsInSheet_();
-  return CardService.newActionResponseBuilder()
-    .setNotification(CardService.newNotification().setText('Retried error cells'))
-    .build();
+function installOrUpdateBoundFunctions_() {
+  const ssId = SpreadsheetApp.getActive().getId();
+
+  // 1) Find existing bound script, if any.
+  const q = `'${ssId}' in parents and mimeType='application/vnd.google-apps.script' and trashed=false`;
+  const list = Drive.Files.list({ q: q, fields: 'files(id,name)' }); // v3
+  let scriptId = (list.files && list.files.length) ? list.files[0].id : null;
+
+  // 2) Create bound project if none.
+  if (!scriptId) {
+    const created = Script.Projects.create({ title: 'LLM Sheet Functions', parentId: ssId });
+    scriptId = created.scriptId;
+  }
+
+  // 3) Prepare our functions file (idempotent upsert).
+  const functionsSource = makeLLMFunctionsSource_();
+  const existing = Script.Projects.getContent({ scriptId: scriptId });
+  const files = existing.files || [];
+
+  // remove any old version of our file by name
+  const keep = files.filter(f => f.name !== 'LLMFunctions');
+  keep.push({ name: 'LLMFunctions', type: 'SERVER_JS', source: functionsSource });
+
+  // add/merge manifest to ensure scopes + whitelist
+  const manifest = {
+    timeZone: 'America/Los_Angeles',
+    exceptionLogging: 'STACKDRIVER',
+    runtimeVersion: 'V8',
+    oauthScopes: [
+      'https://www.googleapis.com/auth/spreadsheets.currentonly',
+      'https://www.googleapis.com/auth/script.external_request'
+    ],
+    urlFetchWhitelist: [DEFAULT_PROXY_URL]
+  };
+  // replace or add appsscript.json
+  const others = keep.filter(f => f.type !== 'JSON' || f.name !== 'appsscript');
+  others.push({ name: 'appsscript', type: 'JSON', source: JSON.stringify(manifest, null, 2) });
+
+  Script.Projects.updateContent({ files: others }, { scriptId: scriptId });
 }
 
-/* ====== SHEETS OPERATIONS (no UI) ====== */
-function regenerateSelection_() {
+/* ====== The code we inject into the bound project ====== */
+function makeLLMFunctionsSource_() {
+  return `
+const DEFAULT_PROXY_URL = '${DEFAULT_PROXY_URL}';
+const DEFAULT_MODEL = '${DEFAULT_MODEL}';
+
+function __LLM_getSettings() {
+  const p = PropertiesService.getUserProperties();
+  return {
+    proxyUrl: p.getProperty('LLM_PROXY_URL') || DEFAULT_PROXY_URL,
+    apiKey:   p.getProperty('LLM_API_KEY')   || '',
+    model:    p.getProperty('LLM_MODEL')     || DEFAULT_MODEL
+  };
+}
+
+/** =LLM(prompt, [systemPrompt]) */
+function LLM(prompt, systemPrompt) { return __LLM_core(prompt, systemPrompt, { model: 'gpt-5-mini' }); }
+/** =LLM_WEB(prompt, [systemPrompt]) */
+function LLM_WEB(prompt, systemPrompt) { return __LLM_core(prompt, systemPrompt, { model: 'gpt-5-mini', web_search: 1 }); }
+/** =LLM_GPT5(prompt, [systemPrompt]) */
+function LLM_GPT5(prompt, systemPrompt) { return __LLM_core(prompt, systemPrompt, { model: 'gpt-5' }); }
+
+function __LLM_core(prompt, systemPrompt, overrides) {
+  const s = __LLM_getSettings();
+  if (!s.apiKey) throw new Error('LLM: API key not set. Open add-on → Save your key.');
+  const isRange = Array.isArray(prompt) && Array.isArray(prompt[0]);
+  const text = isRange ? prompt.flat().filter(v => v !== '').join('\\n') : (prompt == null ? '' : String(prompt));
+  const sys = (systemPrompt == null) ? '' : String(systemPrompt);
+  const params = Object.assign({ model: s.model || DEFAULT_MODEL, web_search: 0, format: 'text/plain' }, overrides || {});
+  const url = __LLM_buildUrl(s.proxyUrl, {
+    key: s.apiKey, prompt: text, system_prompt: sys, model: params.model,
+    web_search: params.web_search, format: params.format, nonce: String(Date.now())
+  });
+  const res = UrlFetchApp.fetch(url, { method: 'get', muteHttpExceptions: true, followRedirects: true });
+  if (res.getResponseCode() < 200 || res.getResponseCode() >= 300) {
+    throw new Error('LLM HTTP ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 500));
+  }
+  const body = res.getContentText();
+  return (params.format && params.format.toLowerCase() === 'text/csv') ? Utilities.parseCsv(body) : body;
+}
+function __LLM_buildUrl(base, p) {
+  const q = Object.keys(p).map(k => k + '=' + encodeURIComponent(String(p[k]))).join('&');
+  let b = base || DEFAULT_PROXY_URL; if (!b.endsWith('/')) b += '/'; return b + '?' + q;
+}
+`;
+}
+
+/* ====== SHEETS HELPERS USED BY UI BUTTONS ====== */
+function handleRegenerate_() { _regen_(); return CardService.newActionResponseBuilder()
+  .setNotification(CardService.newNotification().setText('Regenerated selection')).build(); }
+function handleRetryErrors_() { _retry_(); return CardService.newActionResponseBuilder()
+  .setNotification(CardService.newNotification().setText('Retried error cells')).build(); }
+function _regen_() {
   const sheet = SpreadsheetApp.getActiveSheet();
   const ranges = (sheet.getSelection() && sheet.getSelection().getActiveRangeList())
-    ? sheet.getSelection().getActiveRangeList().getRanges()
-    : [];
+    ? sheet.getSelection().getActiveRangeList().getRanges() : [];
   ranges.forEach((r) => {
     const formulas = r.getFormulas();
-    const height = formulas.length;
-    const width = height ? formulas[0].length : 0;
-    for (let row = 0; row < height; row++) {
-      for (let col = 0; col < width; col++) {
-        const f = formulas[row][col];
-        if (isLLMFormula_(f)) {
-          const bumped = bumpNonceInFormula_(f);
-          r.getCell(row + 1, col + 1).setFormula(bumped);
+    for (let row = 0; row < formulas.length; row++) {
+      for (let col = 0; col < (formulas[0] || []).length; col++) {
+        const f = formulas[row][col]; if (!f) continue;
+        if (/^=(LLM|LLM_WEB|LLM_GPT5)\(/i.test(String(f))) {
+          r.getCell(row + 1, col + 1).setFormula(String(f) + ' '); // nudge
         }
       }
     }
   });
 }
-
-function retryErrorsInSheet_() {
+function _retry_() {
   const sheet = SpreadsheetApp.getActiveSheet();
   const rng = sheet.getDataRange();
   const formulas = rng.getFormulas();
   const displays = rng.getDisplayValues();
-  const height = formulas.length;
-  const width = height ? formulas[0].length : 0;
-
-  for (let r = 0; r < height; r++) {
-    for (let c = 0; c < width; c++) {
-      const f = formulas[r][c];
-      const disp = displays[r][c];
-      if (isLLMFormula_(f) && isDisplayError_(disp)) {
-        const bumped = bumpNonceInFormula_(f);
-        rng.getCell(r + 1, c + 1).setFormula(bumped);
+  for (let r = 0; r < formulas.length; r++) {
+    for (let c = 0; c < (formulas[0] || []).length; c++) {
+      if (/^=(LLM|LLM_WEB|LLM_GPT5)\(/i.test(String(formulas[r][c])) && String(displays[r][c]).trim().startsWith('#')) {
+        rng.getCell(r + 1, c + 1).setFormula(String(formulas[r][c]) + ' ');
       }
     }
   }
 }
 
-/* ====== CUSTOM FUNCTIONS (GET-only) ====== */
-/** =LLM(prompt, [systemPrompt]) */
-function LLM(prompt, systemPrompt) {
-  return coreLLMCall_(prompt, systemPrompt, { model: 'gpt-5-mini' });
+/* ====== SMALL UTILS ====== */
+function getInput_(inputs, name) {
+  if (!inputs || !inputs[name] || !inputs[name].stringInputs) return '';
+  const arr = inputs[name].stringInputs.value || []; return arr.length ? arr[0] : '';
 }
-/** =LLM_WEB(prompt, [systemPrompt]) */
-function LLM_WEB(prompt, systemPrompt) {
-  return coreLLMCall_(prompt, systemPrompt, { model: 'gpt-5-mini', web_search: 1 });
-}
-/** =LLM_GPT5(prompt, [systemPrompt]) */
-function LLM_GPT5(prompt, systemPrompt) {
-  return coreLLMCall_(prompt, systemPrompt, { model: 'gpt-5' });
-}
-
-function coreLLMCall_(prompt, systemPrompt, overrides) {
-  const started = Date.now();
-  const budgetMs = 25000;
-
-  const s = getUserSettings_();
-  const apiKey = getApiKey_();
-  if (!apiKey) throw new Error('LLM: API key not set. Open the add-on and Save your key.');
-
-  const payload = buildPayload_(prompt, systemPrompt, overrides, s, apiKey);
-  const url = buildUrl_(s.proxyUrl, payload);
-
-  const options = { method: 'get', muteHttpExceptions: true, followRedirects: true };
-
-  const maxAttempts = 2;
-  let attempt = 0;
-  let backoffMs = 1200;
-
-  while (true) {
-    attempt++;
-    try {
-      const res = UrlFetchApp.fetch(url, options);
-      const code = res.getResponseCode();
-      const text = res.getContentText();
-      if (code >= 200 && code < 300) {
-        return postprocess_(text, payload.format);
-      } else {
-        if (attempt >= maxAttempts) {
-          throw new Error('LLM HTTP ' + code + ': ' + truncate_(text, 500));
-        }
-      }
-    } catch (e) {
-      if (attempt >= maxAttempts) {
-        throw new Error('LLM failed after retries: ' + String(e));
-      }
-    }
-    if (Date.now() - started + backoffMs > budgetMs) {
-      throw new Error('LLM: time budget exceeded before retry.');
-    }
-    Utilities.sleep(backoffMs);
-    backoffMs *= 2;
-  }
-}
-
-/* ====== SHARED HELPERS ====== */
-function buildPayload_(prompt, systemPrompt, overrides, s, apiKey) {
-  const isRange = Array.isArray(prompt) && Array.isArray(prompt[0]);
-  const flattened = isRange ? flatten2D_(prompt).join('\n') : toStr_(prompt);
-  const sys = systemPrompt ? toStr_(systemPrompt) : '';
-  const params = { model: s.model || DEFAULT_MODEL, format: 'text/plain', web_search: 0 };
-  Object.assign(params, overrides || {});
-  params.nonce = String(Date.now());
-  return {
-    key: apiKey,
-    prompt: flattened,
-    system_prompt: sys,
-    model: params.model,
-    web_search: params.web_search,
-    format: params.format,
-    nonce: params.nonce
-  };
-}
-function buildUrl_(base, p) {
-  const q = [
-    ['key', p.key], ['prompt', p.prompt], ['system_prompt', p.system_prompt],
-    ['model', p.model], ['web_search', String(p.web_search)], ['format', p.format], ['nonce', p.nonce]
-  ].map(([k, v]) => k + '=' + encodeURIComponent(String(v)));
-  let url = base || DEFAULT_PROXY_URL;
-  if (!url.endsWith('/')) url += '/';
-  return url + '?' + q.join('&');
-}
-function postprocess_(text, format) {
-  if (format && format.toLowerCase() === 'text/csv') return Utilities.parseCsv(text);
-  return text;
-}
-function isLLMFormula_(f) {
-  if (!f) return false;
-  const s = String(f).trim().toUpperCase();
-  return s.startsWith('=LLM(') || s.startsWith('=LLM_WEB(') || s.startsWith('=LLM_GPT5(');
-}
-function isDisplayError_(disp) {
-  if (!disp) return false;
-  return String(disp).trim().startsWith('#');
-}
-function bumpNonceInFormula_(formula) {
-  if (!formula) return formula;
-  const hasNonce = /(?:[?&,]\s*nonce\s*=)/i.test(formula);
-  const stamp = String(Date.now());
-  if (hasNonce) return formula.replace(/(nonce\s*=\s*)(\d+)/i, '$1' + stamp);
-  return formula + ' ';
-}
-function flatten2D_(arr2d) {
-  const out = [];
-  for (let r = 0; r < arr2d.length; r++) {
-    for (let c = 0; c < arr2d[r].length; c++) {
-      const v = arr2d[r][c];
-      if (v !== null && v !== undefined && v !== '') out.push(String(v));
-    }
-  }
-  return out;
-}
-function toStr_(v) {
-  if (v === null || v === undefined) return '';
-  if (Array.isArray(v)) return flatten2D_(v).join('\n');
-  return String(v);
-}
-function truncate_(txt, maxLen) {
-  const s = String(txt || '');
-  return s.length > maxLen ? s.slice(0, maxLen) + '…' : s;
-}
-
-/* ====== Helper to read CardService form input ====== */
-function getInput_(formInputs, name) {
-  if (!formInputs || !formInputs[name] || !formInputs[name].stringInputs) return '';
-  const arr = formInputs[name].stringInputs.value || [];
-  return arr.length ? arr[0] : '';
+function isChecked_(inputs, name) {
+  if (!inputs || !inputs[name] || !inputs[name].stringInputs) return false;
+  const arr = inputs[name].stringInputs.value || []; return arr.indexOf('1') !== -1;
 }

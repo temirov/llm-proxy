@@ -2,11 +2,27 @@
   "timeZone": "America/Los_Angeles",
   "runtimeVersion": "V8",
   "exceptionLogging": "STACKDRIVER",
-  "dependencies": {},
+  "dependencies": {
+    "enabledAdvancedServices": [
+      {
+        "userSymbol": "Script",
+        "serviceId": "script",
+        "version": "v1"
+      },
+      {
+        "userSymbol": "Drive",
+        "serviceId": "drive",
+        "version": "v3"
+      }
+    ]
+  },
   "oauthScopes": [
-    "https://www.googleapis.com/auth/spreadsheets.currentonly",
+    "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/script.external_request",
-    "https://www.googleapis.com/auth/userinfo.email"
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/script.projects",
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/script.deployments"
   ],
   "urlFetchWhitelist": [
     "https://llm-proxy.mprlab.com/"
