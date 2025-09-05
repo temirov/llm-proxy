@@ -135,10 +135,6 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 				webSearchEnabled = parsedWebSearch
 			}
 		}
-		if webSearchEnabled && mustRejectWebSearchAtIngress(modelIdentifier) {
-			ginContext.String(http.StatusBadRequest, errorWebSearchUnsupportedByModel)
-			return
-		}
 
 		replyChannel := make(chan result, 1)
 		requestDeadline, deadlineFound := ginContext.Request.Context().Deadline()

@@ -40,9 +40,8 @@ const (
 	errorUpstreamIncomplete    = "OpenAI API error (incomplete response)"
 	errorOpenAIModelValidation = "OpenAI model validation error"
 	// errorUnknownModel indicates that a model identifier is not recognized.
-	errorUnknownModel                = "unknown model"
-	errorWebSearchUnsupportedByModel = "web_search is not supported by the selected model"
-	errorResponseFormat              = "response formatting error"
+	errorUnknownModel   = "unknown model"
+	errorResponseFormat = "response formatting error"
 	// errorQueueFull indicates that the internal request queue cannot accept additional tasks.
 	errorQueueFull = "request queue full"
 
@@ -61,11 +60,11 @@ const (
 	keyToolChoice      = "tool_choice"
 	keyAuto            = "auto"
 
-        jsonFieldID         = "id"
-        jsonFieldStatus     = "status"
-        jsonFieldOutputText = "output_text"
-        jsonFieldResponse   = "response"
-        jsonFieldAllowedRequestFields = "allowed_request_fields"
+	jsonFieldID                   = "id"
+	jsonFieldStatus               = "status"
+	jsonFieldOutputText           = "output_text"
+	jsonFieldResponse             = "response"
+	jsonFieldAllowedRequestFields = "allowed_request_fields"
 
 	statusCompleted = "completed"
 	statusSucceeded = "succeeded"
@@ -93,12 +92,12 @@ const (
 	// logFieldExpectedFingerprint identifies the fingerprint of the expected client key.
 	logFieldExpectedFingerprint = "expected_fingerprint"
 
-	logEventOpenAIRequestError    = "OpenAI request error"
-	logEventOpenAIResponse        = "OpenAI API response"
-        logEventOpenAIModelsList      = "OpenAI models list"
-        logEventOpenAIModelsListError = "OpenAI models list error"
-        logEventOpenAIModelCapabilitiesError = "OpenAI model capabilities error"
-        logEventOpenAIPollError       = "OpenAI poll error"
+	logEventOpenAIRequestError           = "OpenAI request error"
+	logEventOpenAIResponse               = "OpenAI API response"
+	logEventOpenAIModelsList             = "OpenAI models list"
+	logEventOpenAIModelsListError        = "OpenAI models list error"
+	logEventOpenAIModelCapabilitiesError = "OpenAI model capabilities error"
+	logEventOpenAIPollError              = "OpenAI poll error"
 	// logEventParseOpenAIResponseFailed indicates that parsing the OpenAI response failed.
 	logEventParseOpenAIResponseFailed     = "parse OpenAI response failed"
 	logEventForbiddenRequest              = "forbidden request"
