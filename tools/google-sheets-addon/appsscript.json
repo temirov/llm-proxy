@@ -1,0 +1,33 @@
+{
+  "timeZone": "America/Los_Angeles",
+  "runtimeVersion": "V8",
+  "exceptionLogging": "STACKDRIVER",
+  "dependencies": {},
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/spreadsheets.currentonly",
+    "https://www.googleapis.com/auth/script.external_request",
+    "https://www.googleapis.com/auth/userinfo.email"
+  ],
+  "urlFetchWhitelist": [
+    "https://llm-proxy.mprlab.com/"
+  ],
+  "addOns": {
+    "common": {
+      "name": "LLM for Sheets",
+      "logoUrl": "https://ssl.gstatic.com/docs/doclist/images/mediatype/icon_1_document_x16.png",
+      "layoutProperties": {
+        "primaryColor": "#1a73e8",
+        "secondaryColor": "#ffffff"
+      },
+      "openLinkUrlPrefixes": [
+        "https://llm-proxy.mprlab.com/"
+      ]
+    },
+    "sheets": {
+      "homepageTrigger": {
+        "runFunction": "buildAddOnHomePage",
+        "enabled": true
+      }
+    }
+  }
+}

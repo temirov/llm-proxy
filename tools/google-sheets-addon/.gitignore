@@ -1,5 +1,3 @@
 node_modules/
 .clasp.json
 .oauth2.json
-.clasp.dev.json
-.clasp.prod.json

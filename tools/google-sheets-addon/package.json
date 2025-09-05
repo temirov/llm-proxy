@@ -2,17 +2,15 @@
   "name": "llm-sheets-addon",
   "private": true,
   "devDependencies": {
-    "@google/clasp": "^2.4.2"
+    "@google/clasp": "^2.5.0"
   },
   "scripts": {
-    "login": "clasp login",
-    "push:dev": "make push-dev",
-    "push:prod": "make push-prod",
-    "version:dev": "make version-dev",
-    "version:prod": "make version-prod",
-    "deploy:dev": "make deploy-dev",
-    "deploy:prod": "make deploy-prod",
-    "pull:dev": "make pull-dev",
-    "pull:prod": "make pull-prod"
+    "login": "npx -y @google/clasp@2.5.0 login",
+    "open": "npx -y @google/clasp@2.5.0 open",
+    "push": "npx -y @google/clasp@2.5.0 push --force",
+    "pull": "npx -y @google/clasp@2.5.0 pull",
+    "version": "npx -y @google/clasp@2.5.0 version \"bump\"",
+    "deploy": "npx -y @google/clasp@2.5.0 deploy --description \"main\"",
+    "deployments": "npx -y @google/clasp@2.5.0 deployments"
   }
 }
