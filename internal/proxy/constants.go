@@ -28,8 +28,8 @@ const (
 	mimeTextPlain       = "text/plain; charset=utf-8"
 
 	errorMissingPrompt = "missing prompt parameter"
-	// errorMissingClientKey indicates that the key query parameter is missing.
-	errorMissingClientKey   = "missing client key"
+	// ErrorMissingClientKey indicates that the key query parameter is missing.
+	ErrorMissingClientKey   = "missing client key"
 	errorRequestTimedOut    = "request timed out"
 	errorRequestBuild       = "request build error"
 	errorOpenAIRequest      = "OpenAI request error"
@@ -61,11 +61,11 @@ const (
 	keyToolChoice      = "tool_choice"
 	keyAuto            = "auto"
 
-        jsonFieldID         = "id"
-        jsonFieldStatus     = "status"
-        jsonFieldOutputText = "output_text"
-        jsonFieldResponse   = "response"
-        jsonFieldAllowedRequestFields = "allowed_request_fields"
+	jsonFieldID                   = "id"
+	jsonFieldStatus               = "status"
+	jsonFieldOutputText           = "output_text"
+	jsonFieldResponse             = "response"
+	jsonFieldAllowedRequestFields = "allowed_request_fields"
 
 	statusCompleted = "completed"
 	statusSucceeded = "succeeded"
@@ -93,12 +93,12 @@ const (
 	// logFieldExpectedFingerprint identifies the fingerprint of the expected client key.
 	logFieldExpectedFingerprint = "expected_fingerprint"
 
-	logEventOpenAIRequestError    = "OpenAI request error"
-	logEventOpenAIResponse        = "OpenAI API response"
-        logEventOpenAIModelsList      = "OpenAI models list"
-        logEventOpenAIModelsListError = "OpenAI models list error"
-        logEventOpenAIModelCapabilitiesError = "OpenAI model capabilities error"
-        logEventOpenAIPollError       = "OpenAI poll error"
+	logEventOpenAIRequestError           = "OpenAI request error"
+	logEventOpenAIResponse               = "OpenAI API response"
+	logEventOpenAIModelsList             = "OpenAI models list"
+	logEventOpenAIModelsListError        = "OpenAI models list error"
+	logEventOpenAIModelCapabilitiesError = "OpenAI model capabilities error"
+	logEventOpenAIPollError              = "OpenAI poll error"
 	// logEventParseOpenAIResponseFailed indicates that parsing the OpenAI response failed.
 	logEventParseOpenAIResponseFailed     = "parse OpenAI response failed"
 	logEventForbiddenRequest              = "forbidden request"

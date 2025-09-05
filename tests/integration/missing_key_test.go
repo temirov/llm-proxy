@@ -5,11 +5,8 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
-)
 
-const (
-	// missingKeyErrorBody is the expected response when the key query parameter is absent.
-	missingKeyErrorBody = "missing client key"
+	"github.com/temirov/llm-proxy/internal/proxy"
 )
 
 // TestMissingClientKeyReturnsForbidden verifies that a request without a key is rejected.
@@ -31,7 +28,7 @@ func TestMissingClientKeyReturnsForbidden(testingInstance *testing.T) {
 		testingInstance.Fatalf("status=%d body=%s", httpResponse.StatusCode, string(responseBody))
 	}
 	responseBytes, _ := io.ReadAll(httpResponse.Body)
-	if string(responseBytes) != missingKeyErrorBody {
-		testingInstance.Fatalf("body=%q want=%q", string(responseBytes), missingKeyErrorBody)
+	if string(responseBytes) != proxy.ErrorMissingClientKey {
+		testingInstance.Fatalf("body=%q want=%q", string(responseBytes), proxy.ErrorMissingClientKey)
 	}
 }

@@ -64,7 +64,7 @@ func secretMiddleware(sharedSecret string, structuredLogger *zap.SugaredLogger) 
 				logEventForbiddenRequest,
 				logFieldExpectedFingerprint, expectedSecretFingerprint,
 			)
-			ginContext.String(http.StatusForbidden, errorMissingClientKey)
+			ginContext.String(http.StatusForbidden, ErrorMissingClientKey)
 			ginContext.Abort()
 			return
 		}
