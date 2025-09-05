@@ -21,20 +21,22 @@ const (
 
 // makeWebSearchRejectingHTTPClient returns an HTTP client whose model list includes only a model without web search support.
 func makeWebSearchRejectingHTTPClient(testingInstance *testing.T) *http.Client {
-	testingInstance.Helper()
-	return &http.Client{
-		Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
-			switch httpRequest.URL.String() {
-			case proxy.ModelsURL():
-				body := `{"data":[{"id":"` + unsupportedModelIdentifier + `"}]}`
-				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
-			default:
-				testingInstance.Fatalf("unexpected request to %s", httpRequest.URL.String())
-				return nil, nil
-			}
-		}),
-		Timeout: 5 * time.Second,
-	}
+        testingInstance.Helper()
+        return &http.Client{
+                Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
+                       switch {
+                       case httpRequest.URL.String() == proxy.ModelsURL():
+                               body := `{"data":[{"id":"` + unsupportedModelIdentifier + `"}]}`
+                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+                       case strings.HasPrefix(httpRequest.URL.String(), proxy.ModelsURL()+"/"):
+                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadataEmpty)), Header: make(http.Header)}, nil
+                       default:
+                               testingInstance.Fatalf("unexpected request to %s", httpRequest.URL.String())
+                               return nil, nil
+                       }
+                }),
+                Timeout: 5 * time.Second,
+        }
 }
 
 // TestIntegrationWebSearchUnsupportedModelReturnsBadRequest verifies that web search requests for unsupported models yield an HTTP 400 response.

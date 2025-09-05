@@ -22,26 +22,28 @@ const (
 
 // makeTimeoutHTTPClient returns an HTTP client whose responses delay longer than the request timeout.
 func makeTimeoutHTTPClient(testingInstance *testing.T) *http.Client {
-	testingInstance.Helper()
-	return &http.Client{
-		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
-			switch request.URL.String() {
-			case proxy.ModelsURL():
-				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(modelsListBody)), Header: make(http.Header)}, nil
-			case proxy.ResponsesURL():
-				select {
-				case <-request.Context().Done():
-					return nil, request.Context().Err()
-				case <-time.After(timeoutUpstreamDelay):
-					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"output_text":"NEVER"}`)), Header: make(http.Header)}, nil
-				}
-			default:
-				testingInstance.Fatalf("unexpected request to %s", request.URL.String())
-				return nil, nil
-			}
-		}),
-		Timeout: timeoutHTTPClientTimeout,
-	}
+        testingInstance.Helper()
+        return &http.Client{
+                Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+                       switch {
+                       case request.URL.String() == proxy.ModelsURL():
+                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(modelsListBody)), Header: make(http.Header)}, nil
+                       case strings.HasPrefix(request.URL.String(), proxy.ModelsURL()+"/"):
+                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadataTemperatureTools)), Header: make(http.Header)}, nil
+                       case request.URL.String() == proxy.ResponsesURL():
+                               select {
+                               case <-request.Context().Done():
+                                       return nil, request.Context().Err()
+                               case <-time.After(timeoutUpstreamDelay):
+                                       return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"output_text":"NEVER"}`)), Header: make(http.Header)}, nil
+                               }
+                       default:
+                               testingInstance.Fatalf("unexpected request to %s", request.URL.String())
+                               return nil, nil
+                       }
+                }),
+                Timeout: timeoutHTTPClientTimeout,
+        }
 }
 
 // TestIntegrationUpstreamRequestTimeoutTriggersGatewayTimeout verifies upstream timeouts result in a gateway timeout before the upstream delay elapses.

@@ -18,12 +18,13 @@ var ErrUnknownModel = errors.New(errorUnknownModel)
 
 // modelValidator caches known model identifiers from the upstream service.
 type modelValidator struct {
-	// modelMutex guards access to models and expiry.
-	modelMutex sync.RWMutex
-	models     map[string]struct{}
-	expiry     time.Time
-	apiKey     string
-	logger     *zap.SugaredLogger
+        // modelMutex guards access to models and expiry.
+        modelMutex sync.RWMutex
+       models       map[string]struct{}
+       capabilities map[string]ModelCapabilities
+       expiry       time.Time
+       apiKey       string
+       logger       *zap.SugaredLogger
 }
 
 // newModelValidator creates a modelValidator and loads the initial model list.
@@ -75,15 +76,23 @@ func (validator *modelValidator) refresh() error {
 	if decodeError := json.NewDecoder(httpResponse.Body).Decode(&payload); decodeError != nil {
 		return decodeError
 	}
-	modelSet := make(map[string]struct{}, len(payload.Data))
-	for _, modelEntry := range payload.Data {
-		modelSet[modelEntry.ID] = struct{}{}
-	}
-	validator.modelMutex.Lock()
-	validator.models = modelSet
-	validator.expiry = time.Now().Add(modelsCacheTTL)
-	validator.modelMutex.Unlock()
-	return nil
+       modelSet := make(map[string]struct{}, len(payload.Data))
+       capabilityMap := make(map[string]ModelCapabilities, len(payload.Data))
+       for _, modelEntry := range payload.Data {
+               modelSet[modelEntry.ID] = struct{}{}
+               if capabilities, fetchError := fetchModelCapabilities(modelEntry.ID, validator.apiKey); fetchError == nil {
+                       capabilityMap[modelEntry.ID] = capabilities
+               } else {
+                       validator.logger.Debugw(logEventOpenAIModelCapabilitiesError, constants.LogFieldError, fetchError)
+               }
+       }
+       setCapabilityCache(capabilityMap)
+       validator.modelMutex.Lock()
+       validator.models = modelSet
+       validator.capabilities = capabilityMap
+       validator.expiry = time.Now().Add(modelsCacheTTL)
+       validator.modelMutex.Unlock()
+       return nil
 }
 
 // Verify checks whether the provided model identifier is known.

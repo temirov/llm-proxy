@@ -61,10 +61,11 @@ const (
 	keyToolChoice      = "tool_choice"
 	keyAuto            = "auto"
 
-	jsonFieldID         = "id"
-	jsonFieldStatus     = "status"
-	jsonFieldOutputText = "output_text"
-	jsonFieldResponse   = "response"
+        jsonFieldID         = "id"
+        jsonFieldStatus     = "status"
+        jsonFieldOutputText = "output_text"
+        jsonFieldResponse   = "response"
+        jsonFieldAllowedRequestFields = "allowed_request_fields"
 
 	statusCompleted = "completed"
 	statusSucceeded = "succeeded"
@@ -94,9 +95,10 @@ const (
 
 	logEventOpenAIRequestError    = "OpenAI request error"
 	logEventOpenAIResponse        = "OpenAI API response"
-	logEventOpenAIModelsList      = "OpenAI models list"
-	logEventOpenAIModelsListError = "OpenAI models list error"
-	logEventOpenAIPollError       = "OpenAI poll error"
+        logEventOpenAIModelsList      = "OpenAI models list"
+        logEventOpenAIModelsListError = "OpenAI models list error"
+        logEventOpenAIModelCapabilitiesError = "OpenAI model capabilities error"
+        logEventOpenAIPollError       = "OpenAI poll error"
 	// logEventParseOpenAIResponseFailed indicates that parsing the OpenAI response failed.
 	logEventParseOpenAIResponseFailed     = "parse OpenAI response failed"
 	logEventForbiddenRequest              = "forbidden request"

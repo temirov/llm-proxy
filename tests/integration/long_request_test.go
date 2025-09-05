@@ -23,22 +23,24 @@ const (
 
 // makeSlowHTTPClient returns an HTTP client that simulates a delayed upstream response.
 func makeSlowHTTPClient(testingInstance *testing.T) *http.Client {
-	testingInstance.Helper()
-	return &http.Client{
-		Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
-			switch httpRequest.URL.String() {
-			case proxy.ModelsURL():
-				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(modelsListBody)), Header: make(http.Header)}, nil
-			case proxy.ResponsesURL():
-				time.Sleep(responseDelay)
-				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"output_text":"` + expectedResponseBody + `"}`)), Header: make(http.Header)}, nil
-			default:
-				testingInstance.Fatalf(unexpectedRequestFormat, httpRequest.URL.String())
-				return nil, nil
-			}
-		}),
-		Timeout: httpClientTimeout,
-	}
+        testingInstance.Helper()
+        return &http.Client{
+                Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
+                       switch {
+                       case httpRequest.URL.String() == proxy.ModelsURL():
+                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(modelsListBody)), Header: make(http.Header)}, nil
+                       case strings.HasPrefix(httpRequest.URL.String(), proxy.ModelsURL()+"/"):
+                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadataTemperatureTools)), Header: make(http.Header)}, nil
+                       case httpRequest.URL.String() == proxy.ResponsesURL():
+                               time.Sleep(responseDelay)
+                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"output_text":"` + expectedResponseBody + `"}`)), Header: make(http.Header)}, nil
+                       default:
+                               testingInstance.Fatalf(unexpectedRequestFormat, httpRequest.URL.String())
+                               return nil, nil
+                       }
+                }),
+                Timeout: httpClientTimeout,
+        }
 }
 
 // TestIntegrationResponseDeliveredAfterDelay verifies responses are sent after long upstream delays.
