@@ -1,6 +1,10 @@
 package utils
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/temirov/llm-proxy/internal/constants"
+)
 
 // IsBlank reports whether a string is empty or whitespace-only.
 func IsBlank(value string) bool {
@@ -16,4 +20,17 @@ func HasAnyPrefix(value string, prefixes ...string) bool {
 		}
 	}
 	return false
+}
+
+// GetString returns a string value from the provided container for the specified field.
+func GetString(container map[string]any, field string) string {
+	if container == nil {
+		return constants.EmptyString
+	}
+	if rawValue, present := container[field]; present {
+		if castValue, isString := rawValue.(string); isString {
+			return castValue
+		}
+	}
+	return constants.EmptyString
 }

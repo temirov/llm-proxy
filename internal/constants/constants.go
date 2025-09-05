@@ -9,4 +9,7 @@ const (
 
 	// LogEventReadResponseBodyFailed identifies failures while reading an HTTP response body.
 	LogEventReadResponseBodyFailed = "read response body failed"
+
+	EmptyString = ""
+	LineBreak   = "\n"
 )
