@@ -31,17 +31,19 @@ func (roundTripper adaptiveRoundTripper) RoundTrip(httpRequest *http.Request) (*
 
 // newAdaptiveClient returns an HTTP client that adapts to unsupported parameters.
 func newAdaptiveClient(testingInstance *testing.T, mode string) *http.Client {
-	testingInstance.Helper()
-	return &http.Client{
-		Transport: adaptiveRoundTripper(func(httpRequest *http.Request) (*http.Response, error) {
-			switch httpRequest.URL.String() {
-			case proxy.ModelsURL():
-				body := `{"data":[{"id":"gpt-5-mini"}]}`
-				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
-			case proxy.ResponsesURL():
-				buf, _ := io.ReadAll(httpRequest.Body)
-				httpRequest.Body.Close()
-				payload := string(buf)
+        testingInstance.Helper()
+        return &http.Client{
+                Transport: adaptiveRoundTripper(func(httpRequest *http.Request) (*http.Response, error) {
+                       switch {
+                       case httpRequest.URL.String() == proxy.ModelsURL():
+                               body := `{"data":[{"id":"gpt-5-mini"}]}`
+                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+                       case strings.HasPrefix(httpRequest.URL.String(), proxy.ModelsURL()+"/"):
+                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadataEmpty)), Header: make(http.Header)}, nil
+                       case httpRequest.URL.String() == proxy.ResponsesURL():
+                               buf, _ := io.ReadAll(httpRequest.Body)
+                               httpRequest.Body.Close()
+                               payload := string(buf)
 				switch mode {
 				case adaptiveModeTemperature:
 					if strings.Contains(payload, `"temperature"`) {
