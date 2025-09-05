@@ -15,7 +15,7 @@ const (
 	// promptValue holds the prompt sent in requests.
 	promptValue = "hello"
 	// knownModelValue identifies a valid model recognized by the validator.
-	knownModelValue = "gpt-4o"
+	knownModelValue = proxy.ModelNameGPT4o
 	// unknownModelValue identifies a model absent from the validator.
 	unknownModelValue = "unknown-model"
 	// systemPromptValue provides the system prompt used by the router.
@@ -24,8 +24,6 @@ const (
 	routerServiceSecret = "sekret"
 	// routerOpenAIKey is a stub API key.
 	routerOpenAIKey = "sk-test"
-	// modelsListJSON is the canned response listing supported models.
-	modelsListJSON = "{\"data\":[{\"id\":\"gpt-4o\"}]}"
 	// responsesBodyJSON is the canned response returned by the responses API.
 	responsesBodyJSON = "{\"output\":[{\"content\":[{\"text\":\"ok\"}]}]}"
 	// requestPathTemplate formats the request path with prompt, model, and key.
@@ -60,20 +58,13 @@ func TestChatHandlerValidatesModel(testingInstance *testing.T) {
 
 	for _, currentScenario := range testScenarios {
 		testingInstance.Run(currentScenario.scenarioName, func(subTest *testing.T) {
-			modelsServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
-				io.WriteString(responseWriter, modelsListJSON)
-			}))
-			subTest.Cleanup(modelsServer.Close)
-
 			responsesServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 				io.WriteString(responseWriter, responsesBodyJSON)
 			}))
 			subTest.Cleanup(responsesServer.Close)
 
-			proxy.SetModelsURL(modelsServer.URL)
 			proxy.SetResponsesURL(responsesServer.URL)
 			proxy.HTTPClient = http.DefaultClient
-			subTest.Cleanup(proxy.ResetModelsURL)
 			subTest.Cleanup(proxy.ResetResponsesURL)
 			subTest.Cleanup(func() { proxy.HTTPClient = http.DefaultClient })
 

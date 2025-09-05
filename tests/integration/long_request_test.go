@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	modelsListBody               = `{"data":[{"id":"gpt-4.1"}]}`
+	modelsListBody               = `{"data":[{"id":"` + proxy.ModelNameGPT41 + `"}]}`
 	expectedResponseBody         = "SLOW_OK"
 	responseDelay                = 31 * time.Second
 	httpClientTimeout            = responseDelay + 5*time.Second
@@ -23,24 +23,24 @@ const (
 
 // makeSlowHTTPClient returns an HTTP client that simulates a delayed upstream response.
 func makeSlowHTTPClient(testingInstance *testing.T) *http.Client {
-        testingInstance.Helper()
-        return &http.Client{
-                Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
-                       switch {
-                       case httpRequest.URL.String() == proxy.ModelsURL():
-                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(modelsListBody)), Header: make(http.Header)}, nil
-                       case strings.HasPrefix(httpRequest.URL.String(), proxy.ModelsURL()+"/"):
-                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadataTemperatureTools)), Header: make(http.Header)}, nil
-                       case httpRequest.URL.String() == proxy.ResponsesURL():
-                               time.Sleep(responseDelay)
-                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"output_text":"` + expectedResponseBody + `"}`)), Header: make(http.Header)}, nil
-                       default:
-                               testingInstance.Fatalf(unexpectedRequestFormat, httpRequest.URL.String())
-                               return nil, nil
-                       }
-                }),
-                Timeout: httpClientTimeout,
-        }
+	testingInstance.Helper()
+	return &http.Client{
+		Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
+			switch {
+			case httpRequest.URL.String() == proxy.ModelsURL():
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(modelsListBody)), Header: make(http.Header)}, nil
+			case strings.HasPrefix(httpRequest.URL.String(), proxy.ModelsURL()+"/"):
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadataTemperatureTools)), Header: make(http.Header)}, nil
+			case httpRequest.URL.String() == proxy.ResponsesURL():
+				time.Sleep(responseDelay)
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"output_text":"` + expectedResponseBody + `"}`)), Header: make(http.Header)}, nil
+			default:
+				testingInstance.Fatalf(unexpectedRequestFormat, httpRequest.URL.String())
+				return nil, nil
+			}
+		}),
+		Timeout: httpClientTimeout,
+	}
 }
 
 // TestIntegrationResponseDeliveredAfterDelay verifies responses are sent after long upstream delays.

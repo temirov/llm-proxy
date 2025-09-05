@@ -7,8 +7,6 @@ import (
 )
 
 const (
-	modelIdentifierGPT4o       = "gpt-4o"
-	modelIdentifierGPT5Mini    = "gpt-5-mini"
 	messageTemperatureMismatch = "model %s temperature=%v want=%v"
 	messageWebSearchMismatch   = "model %s webSearch=%v want=%v"
 )
@@ -20,16 +18,16 @@ func TestResolveModelSpecification(testFramework *testing.T) {
 		expectTemperature bool
 		expectWebSearch   bool
 	}{
-		{modelIdentifierGPT4o, true, true},
-		{modelIdentifierGPT5Mini, false, false},
+		{proxy.ModelNameGPT4o, true, true},
+		{proxy.ModelNameGPT5Mini, false, false},
 	}
 	for _, testCase := range testCases {
 		capabilities := proxy.ResolveModelSpecification(testCase.modelIdentifier)
-		if capabilities.SupportsTemperature() != testCase.expectTemperature {
-			testFramework.Fatalf(messageTemperatureMismatch, testCase.modelIdentifier, capabilities.SupportsTemperature(), testCase.expectTemperature)
+		if capabilities.SupportsTemperature != testCase.expectTemperature {
+			testFramework.Fatalf(messageTemperatureMismatch, testCase.modelIdentifier, capabilities.SupportsTemperature, testCase.expectTemperature)
 		}
-		if capabilities.SupportsWebSearch() != testCase.expectWebSearch {
-			testFramework.Fatalf(messageWebSearchMismatch, testCase.modelIdentifier, capabilities.SupportsWebSearch(), testCase.expectWebSearch)
+		if capabilities.SupportsWebSearch != testCase.expectWebSearch {
+			testFramework.Fatalf(messageWebSearchMismatch, testCase.modelIdentifier, capabilities.SupportsWebSearch, testCase.expectWebSearch)
 		}
 	}
 }

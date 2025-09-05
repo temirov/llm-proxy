@@ -9,7 +9,7 @@ import (
 
 const (
 	// missingKeyErrorBody is the expected response when the key query parameter is absent.
-	missingKeyErrorBody = "missing client key"
+	missingKeyErrorBody = "unknown client key"
 )
 
 // TestMissingClientKeyReturnsForbidden verifies that a request without a key is rejected.

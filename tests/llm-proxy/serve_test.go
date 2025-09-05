@@ -79,7 +79,7 @@ func TestEndpoint_Empty200TreatedAsError(testingInstance *testing.T) {
 
 	router := newRouterWithStubbedOpenAI(
 		testingInstance,
-		`{"data":[{"id":"gpt-4.1"}]}`,
+		`{"data":[{"id":"`+proxy.ModelNameGPT41+`"}]}`,
 		`{"output":[]}`,
 		1,
 		4,
@@ -112,7 +112,7 @@ func TestEndpoint_RespectsAcceptHeaderCSV(testingInstance *testing.T) {
 
 	router := newRouterWithStubbedOpenAI(
 		testingInstance,
-		`{"data":[{"id":"gpt-4.1"}]}`,
+		`{"data":[{"id":"`+proxy.ModelNameGPT41+`"}]}`,
 		`{"output_text":"Hello, world!"}`,
 		1,
 		4,
@@ -150,7 +150,7 @@ func TestEndpoint_ReturnsServiceUnavailableWhenQueueFull(testingInstance *testin
 
 	router := newRouterWithStubbedOpenAI(
 		testingInstance,
-		`{"data":[{"id":"gpt-4.1"}]}`,
+		`{"data":[{"id":"`+proxy.ModelNameGPT41+`"}]}`,
 		`{"output_text":"queued"}`,
 		0,
 		1,

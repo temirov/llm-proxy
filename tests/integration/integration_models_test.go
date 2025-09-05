@@ -15,7 +15,10 @@ import (
 // TestIntegrationModelSpecSuppression verifies that certain fields are suppressed for mini models.
 func TestIntegrationModelSpecSuppression(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
-	testCases := []struct{ name string }{{name: "gpt_5_mini"}}
+	testCases := []struct {
+		name  string
+		model string
+	}{{name: "gpt_5_mini", model: proxy.ModelNameGPT5Mini}}
 	for _, testCase := range testCases {
 		testingInstance.Run(testCase.name, func(subTest *testing.T) {
 			client, captured := makeHTTPClient(subTest, true)
@@ -37,7 +40,7 @@ func TestIntegrationModelSpecSuppression(testingInstance *testing.T) {
 			queryValues.Set(promptQueryParameter, promptValue)
 			queryValues.Set(keyQueryParameter, serviceSecretValue)
 			queryValues.Set(webSearchQueryParameter, "1")
-			queryValues.Set(adaptiveModelQueryParameter, "gpt-5-mini")
+			queryValues.Set(adaptiveModelQueryParameter, testCase.model)
 			requestURL.RawQuery = queryValues.Encode()
 			httpResponse, requestError := http.Get(requestURL.String())
 			if requestError != nil {
@@ -47,10 +50,10 @@ func TestIntegrationModelSpecSuppression(testingInstance *testing.T) {
 			_, _ = io.ReadAll(httpResponse.Body)
 			payload := *captured
 			if _, ok := payload["temperature"]; ok {
-				subTest.Fatalf("temperature must be omitted for gpt-5-mini, got: %v", payload["temperature"])
+				subTest.Fatalf("temperature must be omitted for %s, got: %v", testCase.model, payload["temperature"])
 			}
 			if _, ok := payload["tools"]; ok {
-				subTest.Fatalf("tools must be omitted for gpt-5-mini, got: %v", payload["tools"])
+				subTest.Fatalf("tools must be omitted for %s, got: %v", testCase.model, payload["tools"])
 			}
 			if _, hasInput := payload["input"]; !hasInput {
 				subTest.Fatalf("input must be present for responses API")

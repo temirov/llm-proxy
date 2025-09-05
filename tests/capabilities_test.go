@@ -14,11 +14,12 @@ import (
 
 // Test constants.
 const (
-	modelIDGPT4o    = "gpt-4o"
-	modelIDGPT5Mini = "gpt-5-mini"
-	serviceSecret   = "sekret"
-	openAIKey       = "sk-test"
-	logLevel        = "debug"
+	modelIDGPT4o     = proxy.ModelNameGPT4o
+	modelIDGPT4oMini = proxy.ModelNameGPT4oMini
+	modelIDGPT5Mini  = proxy.ModelNameGPT5Mini
+	serviceSecret    = "sekret"
+	openAIKey        = "sk-test"
+	logLevel         = "debug"
 )
 
 // TestIntegration_TemperatureNotAllowed_OmitsParameter confirms that temperature is omitted when not allowed by metadata.
@@ -27,10 +28,6 @@ func TestIntegration_TemperatureNotAllowed_OmitsParameter(testingInstance *testi
 
 	openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch {
-		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
-			io.WriteString(responseWriter, `{"data":[{"id":"`+modelIDGPT5Mini+`"}]}`)
-		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models/"+modelIDGPT5Mini):
-			io.WriteString(responseWriter, `{"allowed_request_fields":[]}`)
 		case strings.HasSuffix(httpRequest.URL.Path, "/v1/responses"):
 			body, _ := io.ReadAll(httpRequest.Body)
 			_ = json.Unmarshal(body, &observed)
@@ -41,10 +38,8 @@ func TestIntegration_TemperatureNotAllowed_OmitsParameter(testingInstance *testi
 	}))
 	defer openAIServer.Close()
 
-	proxy.SetModelsURL(openAIServer.URL + "/v1/models")
 	proxy.SetResponsesURL(openAIServer.URL + "/v1/responses")
 	proxy.HTTPClient = openAIServer.Client()
-	testingInstance.Cleanup(proxy.ResetModelsURL)
 	testingInstance.Cleanup(proxy.ResetResponsesURL)
 
 	logger, _ := zap.NewDevelopment()
@@ -91,10 +86,6 @@ func TestIntegration_ToolsNotAllowed_OmitsParameters(testingInstance *testing.T)
 
 	openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		switch {
-		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models"):
-			io.WriteString(responseWriter, `{"data":[{"id":"`+modelIDGPT4o+`"}]}`)
-		case strings.HasSuffix(httpRequest.URL.Path, "/v1/models/"+modelIDGPT4o):
-			io.WriteString(responseWriter, `{"allowed_request_fields":["temperature"]}`)
 		case strings.HasSuffix(httpRequest.URL.Path, "/v1/responses"):
 			body, _ := io.ReadAll(httpRequest.Body)
 			_ = json.Unmarshal(body, &observed)
@@ -105,10 +96,8 @@ func TestIntegration_ToolsNotAllowed_OmitsParameters(testingInstance *testing.T)
 	}))
 	defer openAIServer.Close()
 
-	proxy.SetModelsURL(openAIServer.URL + "/v1/models")
 	proxy.SetResponsesURL(openAIServer.URL + "/v1/responses")
 	proxy.HTTPClient = openAIServer.Client()
-	testingInstance.Cleanup(proxy.ResetModelsURL)
 	testingInstance.Cleanup(proxy.ResetResponsesURL)
 
 	logger, _ := zap.NewDevelopment()
@@ -128,7 +117,7 @@ func TestIntegration_ToolsNotAllowed_OmitsParameters(testingInstance *testing.T)
 	applicationServer := httptest.NewServer(router)
 	defer applicationServer.Close()
 
-	httpResponse, requestError := http.Get(applicationServer.URL + "/?prompt=hello&key=" + serviceSecret + "&model=" + modelIDGPT4o + "&web_search=1")
+	httpResponse, requestError := http.Get(applicationServer.URL + "/?prompt=hello&key=" + serviceSecret + "&model=" + modelIDGPT4oMini + "&web_search=1")
 	if requestError != nil {
 		testingInstance.Fatalf("request failed: %v", requestError)
 	}
