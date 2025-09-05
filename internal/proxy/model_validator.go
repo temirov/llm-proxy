@@ -16,20 +16,53 @@ import (
 // ErrUnknownModel is returned when a model identifier is not recognized.
 var ErrUnknownModel = errors.New(errorUnknownModel)
 
+// capabilityCache stores capabilities retrieved from the upstream service.
+type capabilityCache struct {
+	cacheMutex   sync.RWMutex
+	capabilities map[string]ModelCapabilities
+	expiry       time.Time
+	validator    *modelValidator
+}
+
+var modelCapabilityCache capabilityCache
+
 // modelValidator caches known model identifiers from the upstream service.
 type modelValidator struct {
-        // modelMutex guards access to models and expiry.
-        modelMutex sync.RWMutex
-       models       map[string]struct{}
-       capabilities map[string]ModelCapabilities
-       expiry       time.Time
-       apiKey       string
-       logger       *zap.SugaredLogger
+	modelMutex sync.RWMutex
+	models     map[string]struct{}
+	expiry     time.Time
+	apiKey     string
+	logger     *zap.SugaredLogger
+}
+
+// set replaces the capability cache with the provided map and updates the expiry.
+func (cache *capabilityCache) set(newCapabilities map[string]ModelCapabilities) {
+	cache.cacheMutex.Lock()
+	cache.capabilities = newCapabilities
+	cache.expiry = time.Now().Add(capabilitiesCacheTTL)
+	cache.cacheMutex.Unlock()
+}
+
+// get retrieves capabilities for the supplied model identifier, refreshing if expired.
+func (cache *capabilityCache) get(modelIdentifier string) (ModelCapabilities, bool) {
+	cache.cacheMutex.RLock()
+	capability, found := cache.capabilities[modelIdentifier]
+	expired := time.Now().After(cache.expiry)
+	cache.cacheMutex.RUnlock()
+	if expired && cache.validator != nil {
+		if refreshError := cache.validator.refresh(); refreshError == nil {
+			cache.cacheMutex.RLock()
+			capability, found = cache.capabilities[modelIdentifier]
+			cache.cacheMutex.RUnlock()
+		}
+	}
+	return capability, found
 }
 
 // newModelValidator creates a modelValidator and loads the initial model list.
 func newModelValidator(openAIKey string, structuredLogger *zap.SugaredLogger) (*modelValidator, error) {
 	validator := &modelValidator{apiKey: openAIKey, logger: structuredLogger}
+	modelCapabilityCache.validator = validator
 	if refreshError := validator.refresh(); refreshError != nil {
 		return nil, refreshError
 	}
@@ -76,23 +109,22 @@ func (validator *modelValidator) refresh() error {
 	if decodeError := json.NewDecoder(httpResponse.Body).Decode(&payload); decodeError != nil {
 		return decodeError
 	}
-       modelSet := make(map[string]struct{}, len(payload.Data))
-       capabilityMap := make(map[string]ModelCapabilities, len(payload.Data))
-       for _, modelEntry := range payload.Data {
-               modelSet[modelEntry.ID] = struct{}{}
-               if capabilities, fetchError := fetchModelCapabilities(modelEntry.ID, validator.apiKey); fetchError == nil {
-                       capabilityMap[modelEntry.ID] = capabilities
-               } else {
-                       validator.logger.Debugw(logEventOpenAIModelCapabilitiesError, constants.LogFieldError, fetchError)
-               }
-       }
-       setCapabilityCache(capabilityMap)
-       validator.modelMutex.Lock()
-       validator.models = modelSet
-       validator.capabilities = capabilityMap
-       validator.expiry = time.Now().Add(modelsCacheTTL)
-       validator.modelMutex.Unlock()
-       return nil
+	modelSet := make(map[string]struct{}, len(payload.Data))
+	capabilityMap := make(map[string]ModelCapabilities, len(payload.Data))
+	for _, modelEntry := range payload.Data {
+		modelSet[modelEntry.ID] = struct{}{}
+		if capabilities, fetchError := fetchModelCapabilities(modelEntry.ID, validator.apiKey); fetchError == nil {
+			capabilityMap[modelEntry.ID] = capabilities
+		} else {
+			validator.logger.Debugw(logEventOpenAIModelCapabilitiesError, constants.LogFieldError, fetchError)
+		}
+	}
+	modelCapabilityCache.set(capabilityMap)
+	validator.modelMutex.Lock()
+	validator.models = modelSet
+	validator.expiry = time.Now().Add(modelsCacheTTL)
+	validator.modelMutex.Unlock()
+	return nil
 }
 
 // Verify checks whether the provided model identifier is known.
