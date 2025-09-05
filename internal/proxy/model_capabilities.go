@@ -2,39 +2,38 @@ package proxy
 
 import "strings"
 
-// API flavor constants.
-const apiFlavorResponses = "responses"
-
-// Model prefix constants.
 const (
+	// API flavor constants.
+	apiFlavorResponses = "responses"
+	// Model prefix constants.
 	modelPrefixGPT4oMini = "gpt-4o-mini"
 	modelPrefixGPT4o     = "gpt-4o"
 	modelPrefixGPT41     = "gpt-4.1"
 	modelPrefixGPT5Mini  = "gpt-5-mini"
+	modelPrefixGPT5      = "gpt-5"
+	// modelNameSeparator marks the boundary between model prefix and variant.
+	modelNameSeparator = "-"
 )
 
-// modelNameSeparator marks the boundary between model prefix and variant.
-const modelNameSeparator = "-"
-
-// modelCapabilities describes the features supported by a model.
-type modelCapabilities struct {
+// ModelCapabilities describes the features supported by a model.
+type ModelCapabilities struct {
 	apiFlavor           string
 	supportsWebSearch   bool
 	supportsTemperature bool
 }
 
 // SupportsWebSearch reports whether the model allows web search.
-func (capabilities modelCapabilities) SupportsWebSearch() bool {
+func (capabilities ModelCapabilities) SupportsWebSearch() bool {
 	return capabilities.supportsWebSearch
 }
 
 // SupportsTemperature reports whether the model allows setting temperature.
-func (capabilities modelCapabilities) SupportsTemperature() bool {
+func (capabilities ModelCapabilities) SupportsTemperature() bool {
 	return capabilities.supportsTemperature
 }
 
 // capabilitiesByPrefix defines known capabilities for recognized model prefixes.
-var capabilitiesByPrefix = map[string]modelCapabilities{
+var capabilitiesByPrefix = map[string]ModelCapabilities{
 	modelPrefixGPT4oMini: {
 		apiFlavor:           apiFlavorResponses,
 		supportsWebSearch:   false,
@@ -55,10 +54,15 @@ var capabilitiesByPrefix = map[string]modelCapabilities{
 		supportsWebSearch:   false,
 		supportsTemperature: false,
 	},
+	modelPrefixGPT5: {
+		apiFlavor:           apiFlavorResponses,
+		supportsWebSearch:   true,
+		supportsTemperature: true,
+	},
 }
 
 // lookupModelCapabilities finds capabilities for the given model identifier.
-func lookupModelCapabilities(modelIdentifier string) (modelCapabilities, bool) {
+func lookupModelCapabilities(modelIdentifier string) (ModelCapabilities, bool) {
 	for {
 		if capabilities, found := capabilitiesByPrefix[modelIdentifier]; found {
 			return capabilities, true
@@ -69,11 +73,20 @@ func lookupModelCapabilities(modelIdentifier string) (modelCapabilities, bool) {
 		}
 		modelIdentifier = modelIdentifier[:lastSeparatorIndex]
 	}
-	return modelCapabilities{}, false
+	return ModelCapabilities{}, false
 }
 
 // mustRejectWebSearchAtIngress lists models for which web search requests should fail fast.
 func mustRejectWebSearchAtIngress(modelIdentifier string) bool {
 	normalizedModelID := strings.ToLower(strings.TrimSpace(modelIdentifier))
 	return strings.HasPrefix(normalizedModelID, modelPrefixGPT4oMini)
+}
+
+// ResolveModelSpecification returns capabilities using the shared capability table.
+func ResolveModelSpecification(modelIdentifier string) ModelCapabilities {
+	lower := strings.ToLower(strings.TrimSpace(modelIdentifier))
+	if capabilities, found := lookupModelCapabilities(lower); found {
+		return capabilities
+	}
+	return ModelCapabilities{apiFlavor: apiFlavorResponses}
 }

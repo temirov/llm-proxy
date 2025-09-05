@@ -78,7 +78,7 @@ func TestProxyResponseDelivery(testingInstance *testing.T) {
 				capturedMap, _ := captured.(map[string]any)
 				tools, ok := capturedMap["tools"].([]any)
 				if !ok || len(tools) == 0 {
-					subTest.Fatalf(toolsMissingMessage)
+					subTest.Fatal(toolsMissingMessage)
 				}
 				first, _ := tools[0].(map[string]any)
 				if first["type"] != "web_search" {
