@@ -1,8 +1,6 @@
 SHELL := /bin/bash
-CLASP := npx clasp
-ROOT  := src
+CLASP := npx -y @google/clasp@2.5.0
 
-# Copy the selected env file into .clasp.json for clasp to use.
 define use_env
   cp -f .clasp.$(1).json .clasp.json
 endef
@@ -12,19 +10,19 @@ login:
 
 push-dev:
 	@$(call use_env,dev)
-	$(CLASP) push --rootDir $(ROOT) --force
+	$(CLASP) push --force
 
 push-prod:
 	@$(call use_env,prod)
-	$(CLASP) push --rootDir $(ROOT) --force
+	$(CLASP) push --force
 
 pull-dev:
 	@$(call use_env,dev)
-	$(CLASP) pull --rootDir $(ROOT)
+	$(CLASP) pull
 
 pull-prod:
 	@$(call use_env,prod)
-	$(CLASP) pull --rootDir $(ROOT)
+	$(CLASP) pull
 
 version-dev:
 	@$(call use_env,dev)
@@ -41,3 +39,11 @@ deploy-dev:
 deploy-prod:
 	@$(call use_env,prod)
 	$(CLASP) deploy --description "prod"
+
+deployments-dev:
+	@$(call use_env,dev)
+	$(CLASP) deployments
+
+deployments-prod:
+	@$(call use_env,prod)
+	$(CLASP) deployments

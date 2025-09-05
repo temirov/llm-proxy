@@ -34,7 +34,7 @@ function buildAddOnHomePage(e) {
   const s = getUserSettings_();
 
   const section = CardService.newCardSection()
-    .addWidget(CardService.newTextParagraph().setText('<b>LLM Settings</b>'));
+    .addWidget(CardService.newTextParagraph().setText('LLM Settings'));
 
   // Proxy URL
   section.addWidget(

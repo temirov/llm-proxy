@@ -16,15 +16,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
+
       - run: npm ci
-      - run: npm i -g @google/clasp
-      - name: Auth clasp
+      - name: Write clasp creds
         run: |
           echo '${{ secrets.CLASP_CREDENTIALS_JSON }}' > ~/.clasprc.json
           echo '${{ secrets.CLASP_CREDENTIALS_JSON }}' > ~/.clasprc.json.pub
+
       - name: Push + version + deploy (dev)
         run: |
           cp .clasp.dev.json .clasp.json
-          npx clasp push --rootDir src --force
-          npx clasp version "ci bump"
-          npx clasp deploy --description "ci dev"
+          npx -y @google/clasp@2.5.0 push --force
+          npx -y @google/clasp@2.5.0 version "ci bump"
+          npx -y @google/clasp@2.5.0 deploy --description "ci dev"

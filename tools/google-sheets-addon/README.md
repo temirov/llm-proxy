@@ -6,7 +6,7 @@
 cd tools/google-sheets-addon
 npm i
 make login
-````
+```
 
 ## Script IDs
 
