@@ -22,6 +22,8 @@ const (
 	unsupportedTemperatureParameterToken = "'temperature'"
 	// unsupportedToolsParameterToken marks an error response mentioning the tools parameter.
 	unsupportedToolsParameterToken = "'tools'"
+	// defaultTemperature specifies the sampling temperature for supported models.
+	defaultTemperature = 0.7
 )
 
 // HTTPDoer executes HTTP requests, allowing the proxy to abstract the underlying HTTP client.
@@ -71,6 +73,17 @@ type OpenAIRequest struct {
 	ToolChoice string `json:"tool_choice,omitempty"`
 }
 
+// filterPayload returns a new map containing only keys allowed by the schema.
+func filterPayload(candidate map[string]any, allowedFields []string) map[string]any {
+	filtered := make(map[string]any, len(allowedFields))
+	for _, field := range allowedFields {
+		if value, exists := candidate[field]; exists {
+			filtered[field] = value
+		}
+	}
+	return filtered
+}
+
 // openAIRequest sends a prompt to the OpenAI responses API and returns the resulting text.
 // It retries without unsupported parameters and polls for completion when needed.
 func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, systemPrompt string, webSearchEnabled bool, structuredLogger *zap.SugaredLogger) (string, error) {
@@ -79,25 +92,22 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		{keyRole: keyUser, keyContent: userPrompt},
 	}
 
+	candidatePayload := map[string]any{
+		keyModel:           modelIdentifier,
+		keyInput:           messageList,
+		keyMaxOutputTokens: maxOutputTokens,
+		keyTemperature:     defaultTemperature,
+	}
+	if webSearchEnabled {
+		candidatePayload[keyTools] = []Tool{{Type: toolTypeWebSearch}}
+		candidatePayload[keyToolChoice] = keyAuto
+	}
+
 	payloadSchema := ResolveModelPayloadSchema(modelIdentifier)
 
-	requestPayload := OpenAIRequest{
-		Model:           modelIdentifier,
-		Input:           messageList,
-		MaxOutputTokens: maxOutputTokens,
-	}
-	if payloadSchema.Temperature {
-		temperature := 0.7
-		requestPayload.Temperature = &temperature
-	}
-	if webSearchEnabled && payloadSchema.Tools {
-		requestPayload.Tools = []Tool{{Type: toolTypeWebSearch}}
-	}
-	if webSearchEnabled && payloadSchema.ToolChoice {
-		requestPayload.ToolChoice = keyAuto
-	}
+	filteredPayload := filterPayload(candidatePayload, payloadSchema.AllowedRequestFields)
 
-	payloadBytes, marshalError := json.Marshal(requestPayload)
+	payloadBytes, marshalError := json.Marshal(filteredPayload)
 	if marshalError != nil {
 		structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalError)
 		return constants.EmptyString, errors.New(errorRequestBuild)

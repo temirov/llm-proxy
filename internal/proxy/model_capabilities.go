@@ -2,14 +2,10 @@ package proxy
 
 import "strings"
 
-// ModelPayloadSchema enumerates the request fields accepted by a model.
+// ModelPayloadSchema lists request fields allowed by a model.
 type ModelPayloadSchema struct {
-	// Temperature indicates whether the model accepts the temperature field.
-	Temperature bool
-	// Tools indicates whether the model accepts the tools field.
-	Tools bool
-	// ToolChoice indicates whether the model accepts the tool_choice field.
-	ToolChoice bool
+	// AllowedRequestFields enumerates JSON fields permitted in the request payload.
+	AllowedRequestFields []string
 }
 
 const (
@@ -27,15 +23,15 @@ const (
 
 var (
 	// SchemaGPT4oMini defines allowed payload fields for the GPT-4o-mini model.
-	SchemaGPT4oMini = ModelPayloadSchema{Temperature: true}
+	SchemaGPT4oMini = ModelPayloadSchema{AllowedRequestFields: []string{keyModel, keyInput, keyMaxOutputTokens, keyTemperature}}
 	// SchemaGPT4o defines allowed payload fields for the GPT-4o model.
-	SchemaGPT4o = ModelPayloadSchema{Temperature: true, Tools: true, ToolChoice: true}
+	SchemaGPT4o = ModelPayloadSchema{AllowedRequestFields: []string{keyModel, keyInput, keyMaxOutputTokens, keyTemperature, keyTools, keyToolChoice}}
 	// SchemaGPT41 defines allowed payload fields for the GPT-4.1 model.
-	SchemaGPT41 = ModelPayloadSchema{Temperature: true, Tools: true, ToolChoice: true}
+	SchemaGPT41 = ModelPayloadSchema{AllowedRequestFields: []string{keyModel, keyInput, keyMaxOutputTokens, keyTemperature, keyTools, keyToolChoice}}
 	// SchemaGPT5Mini defines allowed payload fields for the GPT-5-mini model.
-	SchemaGPT5Mini = ModelPayloadSchema{}
+	SchemaGPT5Mini = ModelPayloadSchema{AllowedRequestFields: []string{keyModel, keyInput, keyMaxOutputTokens}}
 	// SchemaGPT5 defines allowed payload fields for the GPT-5 model.
-	SchemaGPT5 = ModelPayloadSchema{Tools: true, ToolChoice: true}
+	SchemaGPT5 = ModelPayloadSchema{AllowedRequestFields: []string{keyModel, keyInput, keyMaxOutputTokens, keyTools, keyToolChoice}}
 )
 
 // modelPayloadSchemas associates model identifiers with their payload schemas.
