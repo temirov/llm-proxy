@@ -8,26 +8,34 @@ import (
 
 const (
 	messageTemperatureMismatch = "model %s temperature=%v want=%v"
-	messageWebSearchMismatch   = "model %s webSearch=%v want=%v"
+	messageToolsMismatch       = "model %s tools=%v want=%v"
+	messageToolChoiceMismatch  = "model %s toolChoice=%v want=%v"
 )
 
-// TestResolveModelSpecification verifies that model capabilities come from the capability table.
-func TestResolveModelSpecification(testFramework *testing.T) {
+// TestResolveModelPayloadSchema verifies that payload schemas are returned for every model.
+func TestResolveModelPayloadSchema(testFramework *testing.T) {
 	testCases := []struct {
 		modelIdentifier   string
 		expectTemperature bool
-		expectWebSearch   bool
+		expectTools       bool
+		expectToolChoice  bool
 	}{
-		{proxy.ModelNameGPT4o, true, true},
-		{proxy.ModelNameGPT5Mini, false, false},
+		{proxy.ModelNameGPT4oMini, true, false, false},
+		{proxy.ModelNameGPT4o, true, true, true},
+		{proxy.ModelNameGPT41, true, true, true},
+		{proxy.ModelNameGPT5Mini, false, false, false},
+		{proxy.ModelNameGPT5, false, true, true},
 	}
 	for _, testCase := range testCases {
-		capabilities := proxy.ResolveModelSpecification(testCase.modelIdentifier)
-		if capabilities.SupportsTemperature != testCase.expectTemperature {
-			testFramework.Fatalf(messageTemperatureMismatch, testCase.modelIdentifier, capabilities.SupportsTemperature, testCase.expectTemperature)
+		payloadSchema := proxy.ResolveModelPayloadSchema(testCase.modelIdentifier)
+		if payloadSchema.Temperature != testCase.expectTemperature {
+			testFramework.Fatalf(messageTemperatureMismatch, testCase.modelIdentifier, payloadSchema.Temperature, testCase.expectTemperature)
 		}
-		if capabilities.SupportsWebSearch != testCase.expectWebSearch {
-			testFramework.Fatalf(messageWebSearchMismatch, testCase.modelIdentifier, capabilities.SupportsWebSearch, testCase.expectWebSearch)
+		if payloadSchema.Tools != testCase.expectTools {
+			testFramework.Fatalf(messageToolsMismatch, testCase.modelIdentifier, payloadSchema.Tools, testCase.expectTools)
+		}
+		if payloadSchema.ToolChoice != testCase.expectToolChoice {
+			testFramework.Fatalf(messageToolChoiceMismatch, testCase.modelIdentifier, payloadSchema.ToolChoice, testCase.expectToolChoice)
 		}
 	}
 }
