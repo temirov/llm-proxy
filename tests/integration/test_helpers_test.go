@@ -46,7 +46,7 @@ const (
 	// integrationSearchBody is the web search response used in tests.
 	integrationSearchBody = "SEARCH_OK"
 	// availableModelsBody is the JSON body returned by the stubbed models endpoint in HTTP client tests.
-	availableModelsBody = `{"data":[{"id":"` + proxy.ModelNameGPT41 + `"},{"id":"` + proxy.ModelNameGPT5Mini + `"}]}`
+	availableModelsBody = `{"data":[{"id":"` + proxy.ModelNameGPT41 + `"},{"id":"` + proxy.ModelNameGPT5Mini + `"},{"id":"` + proxy.ModelNameGPT5 + `"}]}`
 	// contentTypeJSON is the HTTP header value for JSON payloads.
 	contentTypeJSON = "application/json"
 	// buildRouterErrorFormat is the format string used when BuildRouter returns an error.
@@ -65,6 +65,10 @@ const (
 	toolsMissingMessage = "tools missing when web_search=1"
 	// toolsMissingFormat reports missing tools when the captured payload is included.
 	toolsMissingFormat = "tools missing in payload when web_search=1; captured=%v"
+	// toolsOmittedFormat reports an unexpected tools field for models without tool support.
+	toolsOmittedFormat = "tools must be omitted for %s, got: %v"
+	// temperatureOmittedFormat reports a temperature field when it should be omitted.
+	temperatureOmittedFormat = "temperature must be omitted for %s, got: %v"
 	// toolTypeMismatchFormat reports an unexpected tool type.
 	toolTypeMismatchFormat = "tool type=%v want=web_search"
 	// metadataTemperatureTools provides model metadata allowing temperature and tools.
