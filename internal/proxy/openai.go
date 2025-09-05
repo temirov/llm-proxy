@@ -16,14 +16,6 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-
-	// unsupportedTemperatureParameterToken marks an error response mentioning the temperature parameter.
-	unsupportedTemperatureParameterToken = "'temperature'"
-	// unsupportedToolsParameterToken marks an error response mentioning the tools parameter.
-	unsupportedToolsParameterToken = "'tools'"
-)
-
 // HTTPDoer executes HTTP requests, allowing the proxy to abstract the underlying HTTP client.
 type HTTPDoer interface {
 	Do(httpRequest *http.Request) (*http.Response, error)
@@ -72,26 +64,24 @@ type OpenAIRequest struct {
 }
 
 // openAIRequest sends a prompt to the OpenAI responses API and returns the resulting text.
-// It retries without unsupported parameters and polls for completion when needed.
+// It builds the payload based on the model schema and polls for completion when needed.
 func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, systemPrompt string, webSearchEnabled bool, structuredLogger *zap.SugaredLogger) (string, error) {
 	messageList := []map[string]string{
 		{keyRole: keySystem, keyContent: systemPrompt},
 		{keyRole: keyUser, keyContent: userPrompt},
 	}
 
-	modelCapabilities := ResolveModelSpecification(modelIdentifier)
+	payloadSchema := ResolveModelPayloadSchema(modelIdentifier)
 
 	requestPayload := OpenAIRequest{
 		Model:           modelIdentifier,
 		Input:           messageList,
 		MaxOutputTokens: maxOutputTokens,
 	}
-	if modelCapabilities.SupportsTemperature {
-		temperature := 0.7
-		requestPayload.Temperature = &temperature
-	}
-	if webSearchEnabled && modelCapabilities.SupportsWebSearch {
+	if webSearchEnabled && payloadSchema.Tools {
 		requestPayload.Tools = []Tool{{Type: toolTypeWebSearch}}
+	}
+	if webSearchEnabled && payloadSchema.ToolChoice {
 		requestPayload.ToolChoice = keyAuto
 	}
 
