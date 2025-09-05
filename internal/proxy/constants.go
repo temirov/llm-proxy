@@ -29,7 +29,7 @@ const (
 
 	errorMissingPrompt = "missing prompt parameter"
 	// errorMissingClientKey indicates that the key query parameter is missing.
-	errorMissingClientKey   = "missing client key"
+	errorMissingClientKey   = "unknown client key"
 	errorRequestTimedOut    = "request timed out"
 	errorRequestBuild       = "request build error"
 	errorOpenAIRequest      = "OpenAI request error"
