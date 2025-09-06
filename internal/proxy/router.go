@@ -14,11 +14,15 @@ import (
 	"go.uber.org/zap"
 )
 
+// result holds the outcome returned by a worker, including the text response
+// and any error encountered during the OpenAI request.
 type result struct {
 	text         string
 	requestError error
 }
 
+// requestTask carries all details needed to process a user request in the
+// worker queue.
 type requestTask struct {
 	prompt           string
 	systemPrompt     string
