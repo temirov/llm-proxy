@@ -30,7 +30,7 @@ func TestResolveModelPayloadSchema(testFramework *testing.T) {
 
 // TestBuildRequestPayload verifies the correct payload structure is built for each model.
 func TestBuildRequestPayload(t *testing.T) {
-	messages := []map[string]string{{"role": "user", "content": "hello"}}
+	const prompt = "hello"
 
 	testCases := []struct {
 		name              string
@@ -78,7 +78,7 @@ func TestBuildRequestPayload(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			payload := proxy.BuildRequestPayload(tc.modelIdentifier, messages, tc.webSearchEnabled)
+			payload := proxy.BuildRequestPayload(tc.modelIdentifier, prompt, tc.webSearchEnabled)
 			payloadBytes, err := json.Marshal(payload)
 			if err != nil {
 				t.Fatalf("Failed to marshal payload: %v", err)

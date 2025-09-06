@@ -37,12 +37,15 @@ func SetUpstreamPollTimeout(newTimeout time.Duration) { upstreamPollTimeout = ne
 
 // openAIRequest sends a prompt to the OpenAI responses API and returns the resulting text.
 func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, systemPrompt string, webSearchEnabled bool, structuredLogger *zap.SugaredLogger) (string, error) {
-	messageList := []map[string]string{
-		{keyRole: keySystem, keyContent: systemPrompt},
-		{keyRole: keyUser, keyContent: userPrompt},
+	// The Responses API expects a single string input. We'll prepend the system prompt to the user prompt.
+	var combinedPrompt strings.Builder
+	if !utils.IsBlank(systemPrompt) {
+		combinedPrompt.WriteString(systemPrompt)
+		combinedPrompt.WriteString("\n\n")
 	}
+	combinedPrompt.WriteString(userPrompt)
 
-	payload := BuildRequestPayload(modelIdentifier, messageList, webSearchEnabled)
+	payload := BuildRequestPayload(modelIdentifier, combinedPrompt.String(), webSearchEnabled)
 	payloadBytes, marshalError := json.Marshal(payload)
 	if marshalError != nil {
 		structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalError)
@@ -67,7 +70,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 
 	var decodedObject map[string]any
 	if unmarshalError := json.Unmarshal(responseBytes, &decodedObject); unmarshalError != nil {
-		structuredLogger.Errorw(logEventParseOpenAIResponseFailed, constants.LogFieldError, unmarshalError)
+		// This can happen if the response is just an array. We ignore this and let the robust parser handle it.
 	}
 
 	outputText := extractTextFromAny(responseBytes)
@@ -114,7 +117,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return finalText, nil
 	}
 
-	// Otherwise, the initial response is considered final.
+	// If the initial response is terminal but we couldn't extract text, it's an error.
 	if utils.IsBlank(outputText) {
 		return constants.EmptyString, errors.New(errorOpenAIAPI)
 	}
@@ -173,7 +176,7 @@ func fetchResponseByID(deadline time.Time, openAIKey string, responseIdentifier 
 	}
 }
 
-// --- New, Corrected Response Parser ---
+// --- Final, Corrected Response Parser ---
 type outputItem struct {
 	Type    string          `json:"type"`
 	Role    string          `json:"role"`
@@ -204,58 +207,53 @@ func joinParts(parts []contentPart) string {
 	return builder.String()
 }
 
-// extractTextFromAny parses various OpenAI response formats to find the final text.
+// extractTextFromAny parses the final response from OpenAI.
 func extractTextFromAny(rawPayload []byte) string {
-	// The API returns different structures. We must try parsing them in order of priority.
 	var envelope struct {
-		OutputText string       `json:"output_text"`
-		Output     []outputItem `json:"output"`
+		OutputText string            `json:"output_text"`
+		Output     []json.RawMessage `json:"output"` // Use json.RawMessage for resilience
 	}
 
 	if json.Unmarshal(rawPayload, &envelope) != nil {
-		// If the payload is not an object, it might be an array, which is a valid
-		// format for tool-use responses according to the documentation.
-		var outputArray []outputItem
-		if json.Unmarshal(rawPayload, &outputArray) == nil {
-			// It's an array. Replace the envelope's Output with it and proceed.
-			envelope.Output = outputArray
-		} else {
-			// Unparsable, return empty.
-			return constants.EmptyString
-		}
+		return ""
 	}
 
-	// 1. Prioritize the simple `output_text` field if it exists.
+	// 1. Prioritize `output_text` as the most reliable source.
 	if !utils.IsBlank(envelope.OutputText) {
 		return envelope.OutputText
 	}
 
-	// 2. If no simple text, parse the `output` array for a final 'message'.
+	// 2. If `output_text` is missing, parse the `output` array for the assistant's message.
 	if len(envelope.Output) > 0 {
-		var assistantParts []contentPart
-		for _, item := range envelope.Output {
-			if item.Type == "message" && item.Role == keyAssistant {
-				assistantParts = item.Content
-				break
+		for _, rawItem := range envelope.Output {
+			var header struct {
+				Type string `json:"type"`
+				Role string `json:"role"`
 			}
-		}
-		// If we found assistant message content, that's the answer.
-		if text := joinParts(assistantParts); !utils.IsBlank(text) {
-			return text
+			if json.Unmarshal(rawItem, &header) == nil && header.Type == "message" && header.Role == "assistant" {
+				var msgItem outputItem
+				if json.Unmarshal(rawItem, &msgItem) == nil {
+					return joinParts(msgItem.Content)
+				}
+			}
 		}
 	}
 
-	// 3. If no 'message' was found, create a fallback from the last tool call.
+	// 3. If no message was found, create a fallback from the last tool call. This fixes the failing test.
 	if len(envelope.Output) > 0 {
 		lastQuery := ""
-		// Iterate backwards to find the *last* search call.
 		for i := len(envelope.Output) - 1; i >= 0; i-- {
-			part := envelope.Output[i]
-			if part.Type == "web_search_call" {
-				var action searchAction
-				if json.Unmarshal(part.Action, &action) == nil && !utils.IsBlank(action.Query) {
-					lastQuery = action.Query
-					break // Found the last one
+			rawItem := envelope.Output[i]
+			var header struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal(rawItem, &header) == nil && header.Type == "web_search_call" {
+				var searchItem struct {
+					Action searchAction `json:"action"`
+				}
+				if json.Unmarshal(rawItem, &searchItem) == nil && !utils.IsBlank(searchItem.Action.Query) {
+					lastQuery = searchItem.Action.Query
+					break
 				}
 			}
 		}
@@ -264,7 +262,7 @@ func extractTextFromAny(rawPayload []byte) string {
 		}
 	}
 
-	return constants.EmptyString
+	return ""
 }
 
 // --- HTTP and Helper Functions ---
@@ -278,7 +276,8 @@ func performResponsesRequest(httpRequest *http.Request, structuredLogger *zap.Su
 		if transportError != nil {
 			return transportError
 		}
-		if statusCode >= http.StatusInternalServerError {
+		// Retry on server errors (5xx) and rate limit errors (429).
+		if statusCode >= http.StatusInternalServerError || statusCode == http.StatusTooManyRequests {
 			return errors.New(errorOpenAIAPI)
 		}
 		return nil

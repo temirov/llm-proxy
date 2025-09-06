@@ -12,18 +12,23 @@ const (
 // --- Request Payload Structs ---
 // These structs are mapped directly to the capabilities of known models.
 
+type Reasoning struct {
+	Effort string `json:"effort"`
+}
+
 // requestPayloadBase contains fields common to all requests.
 type requestPayloadBase struct {
-	Model           string              `json:"model"`
-	Input           []map[string]string `json:"input"`
-	MaxOutputTokens int                 `json:"max_output_tokens"`
+	Model           string `json:"model"`
+	Input           string `json:"input"`
+	MaxOutputTokens int    `json:"max_output_tokens"`
 }
 
 // requestPayloadWithTools is for models supporting tools but not temperature (e.g., gpt-5).
 type requestPayloadWithTools struct {
 	requestPayloadBase
-	Tools      []Tool `json:"tools,omitempty"`
-	ToolChoice string `json:"tool_choice,omitempty"`
+	Tools      []Tool     `json:"tools,omitempty"`
+	ToolChoice string     `json:"tool_choice,omitempty"`
+	Reasoning  *Reasoning `json:"reasoning,omitempty"`
 }
 
 // requestPayloadWithTemperature is for models supporting temperature but not tools (e.g., gpt-4o-mini).
@@ -46,10 +51,10 @@ type Tool struct {
 }
 
 // BuildRequestPayload selects the correct struct for the given model and returns it.
-func BuildRequestPayload(modelIdentifier string, messageList []map[string]string, webSearchEnabled bool) any {
+func BuildRequestPayload(modelIdentifier string, combinedPrompt string, webSearchEnabled bool) any {
 	base := requestPayloadBase{
 		Model:           modelIdentifier,
-		Input:           messageList,
+		Input:           combinedPrompt,
 		MaxOutputTokens: maxOutputTokens,
 	}
 
@@ -69,6 +74,7 @@ func BuildRequestPayload(modelIdentifier string, messageList []map[string]string
 		if webSearchEnabled {
 			p.Tools = []Tool{{Type: toolTypeWebSearch}}
 			p.ToolChoice = keyAuto
+			p.Reasoning = &Reasoning{Effort: "low"}
 		}
 		return p
 	case ModelNameGPT4oMini:

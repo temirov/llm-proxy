@@ -19,7 +19,7 @@ const (
 	DefaultModel = ModelNameGPT41
 
 	DefaultRequestTimeoutSeconds      = 180 // overall app-side request timeout
-	DefaultUpstreamPollTimeoutSeconds = 20  // poll budget after "incomplete"
+	DefaultUpstreamPollTimeoutSeconds = 60  // poll budget after "incomplete"
 	DefaultMaxOutputTokens            = 1024
 )
 
