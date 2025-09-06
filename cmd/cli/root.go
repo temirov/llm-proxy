@@ -61,6 +61,11 @@ const (
 	logEventStartingProxy = "starting proxy"
 )
 
+const (
+	// bindingErrorSeparator is used to join multiple binding errors.
+	bindingErrorSeparator = "; "
+)
+
 var config proxy.Configuration
 
 const (
@@ -179,39 +184,39 @@ var rootCmd = &cobra.Command{
 
 // bindOrDie wraps viper bindings and returns a combined error if any bind fails.
 func bindOrDie() error {
-	var errs []string
+	var bindingErrors []string
 	if bindError := viper.BindEnv(keyOpenAIAPIKey, envOpenAIAPIKey); bindError != nil {
-		errs = append(errs, keyOpenAIAPIKey+":"+bindError.Error())
+		bindingErrors = append(bindingErrors, keyOpenAIAPIKey+":"+bindError.Error())
 	}
 	if bindError := viper.BindEnv(keyServiceSecret, envServiceSecret); bindError != nil {
-		errs = append(errs, keyServiceSecret+":"+bindError.Error())
+		bindingErrors = append(bindingErrors, keyServiceSecret+":"+bindError.Error())
 	}
 	if bindError := viper.BindEnv(keyLogLevel, envLogLevel); bindError != nil {
-		errs = append(errs, keyLogLevel+":"+bindError.Error())
+		bindingErrors = append(bindingErrors, keyLogLevel+":"+bindError.Error())
 	}
 	if bindError := viper.BindEnv(keySystemPrompt, envSystemPrompt); bindError != nil {
-		errs = append(errs, keySystemPrompt+":"+bindError.Error())
+		bindingErrors = append(bindingErrors, keySystemPrompt+":"+bindError.Error())
 	}
 	if bindError := viper.BindEnv(keyWorkers, envWorkers); bindError != nil {
-		errs = append(errs, keyWorkers+":"+bindError.Error())
+		bindingErrors = append(bindingErrors, keyWorkers+":"+bindError.Error())
 	}
 	if bindError := viper.BindEnv(keyQueueSize, envQueueSize); bindError != nil {
-		errs = append(errs, keyQueueSize+":"+bindError.Error())
+		bindingErrors = append(bindingErrors, keyQueueSize+":"+bindError.Error())
 	}
 	if bindError := viper.BindEnv(keyPort, envPort); bindError != nil {
-		errs = append(errs, keyPort+":"+bindError.Error())
+		bindingErrors = append(bindingErrors, keyPort+":"+bindError.Error())
 	}
 	if bindError := viper.BindEnv(keyRequestTimeoutSeconds, envRequestTimeoutSeconds); bindError != nil {
-		errs = append(errs, keyRequestTimeoutSeconds+":"+bindError.Error())
+		bindingErrors = append(bindingErrors, keyRequestTimeoutSeconds+":"+bindError.Error())
 	}
 	if bindError := viper.BindEnv(keyUpstreamPollTimeoutSeconds, envUpstreamPollTimeoutSeconds); bindError != nil {
-		errs = append(errs, keyUpstreamPollTimeoutSeconds+":"+bindError.Error())
+		bindingErrors = append(bindingErrors, keyUpstreamPollTimeoutSeconds+":"+bindError.Error())
 	}
 	if bindError := viper.BindEnv(keyMaxOutputTokens, envMaxOutputTokens); bindError != nil {
-		errs = append(errs, keyMaxOutputTokens+":"+bindError.Error())
+		bindingErrors = append(bindingErrors, keyMaxOutputTokens+":"+bindError.Error())
 	}
-	if len(errs) > 0 {
-		return errors.New(strings.Join(errs, "; "))
+	if len(bindingErrors) > 0 {
+		return errors.New(strings.Join(bindingErrors, bindingErrorSeparator))
 	}
 	return nil
 }
