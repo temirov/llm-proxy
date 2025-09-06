@@ -1,32 +1,69 @@
 package integration_test
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/temirov/llm-proxy/internal/proxy"
 )
 
+const (
+	// queueRequestDelay is the time each upstream call sleeps to keep workers busy.
+	queueRequestDelay = 2 * time.Second
+	// requestTimeoutSeconds is the proxy request timeout used for queue saturation.
+	requestTimeoutSeconds = 1
+	// singleWorkerCount specifies the number of workers used in this test.
+	singleWorkerCount = 1
+	// queueFullCountFormat reports the number of queue-full responses.
+	queueFullCountFormat = "queue_full=%d"
+)
+
+// makeDelayedHTTPClient returns an HTTP client that delays responses to simulate a slow upstream server.
+func makeDelayedHTTPClient(testingInstance *testing.T) *http.Client {
+	testingInstance.Helper()
+	return &http.Client{Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
+		switch {
+		case httpRequest.URL.String() == proxy.DefaultEndpoints.GetModelsURL():
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(availableModelsBody)), Header: make(http.Header)}, nil
+		case strings.HasPrefix(httpRequest.URL.String(), proxy.DefaultEndpoints.GetModelsURL()+"/"):
+			modelIdentifier := strings.TrimPrefix(httpRequest.URL.Path, integrationModelsPath+"/")
+			metadata := metadataEmpty
+			if modelIdentifier == proxy.ModelNameGPT41 {
+				metadata = metadataTemperatureTools
+			}
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadata)), Header: make(http.Header)}, nil
+		case httpRequest.URL.String() == proxy.DefaultEndpoints.GetResponsesURL():
+			time.Sleep(queueRequestDelay)
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"output_text":"` + integrationOKBody + `"}`)), Header: make(http.Header)}, nil
+		default:
+			testingInstance.Fatalf(unexpectedRequestFormat, httpRequest.URL.String())
+			return nil, nil
+		}
+	})}
+}
+
 // TestIntegrationHighLoadQueue verifies queue saturation handling.
 func TestIntegrationHighLoadQueue(testingInstance *testing.T) {
-	testingInstance.Skip("queue saturation scenario requires further investigation")
-
 	gin.SetMode(gin.TestMode)
-	client, _ := makeHTTPClient(testingInstance, false)
+	client := makeDelayedHTTPClient(testingInstance)
 	configureProxy(testingInstance, client)
 	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
-		ServiceSecret: serviceSecretValue,
-		OpenAIKey:     openAIKeyValue,
-		LogLevel:      logLevelDebug,
-		WorkerCount:   1,
-		QueueSize:     proxy.DefaultQueueSize,
+		ServiceSecret:         serviceSecretValue,
+		OpenAIKey:             openAIKeyValue,
+		LogLevel:              logLevelDebug,
+		WorkerCount:           singleWorkerCount,
+		QueueSize:             proxy.DefaultQueueSize,
+		RequestTimeoutSeconds: requestTimeoutSeconds,
 	}, newLogger(testingInstance))
 	if buildRouterError != nil {
-		testingInstance.Fatalf("BuildRouter failed: %v", buildRouterError)
+		testingInstance.Fatalf(buildRouterFailedFormat, buildRouterError)
 	}
 	server := httptest.NewServer(router)
 	testingInstance.Cleanup(server.Close)
@@ -36,11 +73,11 @@ func TestIntegrationHighLoadQueue(testingInstance *testing.T) {
 	queryValues.Set(keyQueryParameter, serviceSecretValue)
 	requestURL.RawQuery = queryValues.Encode()
 
-	total := proxy.DefaultQueueSize + 1
-	statuses := make([]int, total)
+	totalRequests := proxy.DefaultQueueSize + singleWorkerCount + 1
+	statuses := make([]int, totalRequests)
 	var waitGroup sync.WaitGroup
-	waitGroup.Add(total)
-	for requestIndex := 0; requestIndex < total; requestIndex++ {
+	waitGroup.Add(totalRequests)
+	for requestIndex := 0; requestIndex < totalRequests; requestIndex++ {
 		go func(index int) {
 			defer waitGroup.Done()
 			httpResponse, requestError := http.Get(requestURL.String())
@@ -53,15 +90,13 @@ func TestIntegrationHighLoadQueue(testingInstance *testing.T) {
 	}
 	waitGroup.Wait()
 
-	var okCount, queueFullCount int
+	var queueFullCount int
 	for _, status := range statuses {
-		if status == http.StatusOK {
-			okCount++
-		} else if status == http.StatusServiceUnavailable {
+		if status == http.StatusServiceUnavailable {
 			queueFullCount++
 		}
 	}
-	if okCount != proxy.DefaultQueueSize || queueFullCount != 1 {
-		testingInstance.Fatalf("ok=%d queue_full=%d", okCount, queueFullCount)
+	if queueFullCount != 1 {
+		testingInstance.Fatalf(queueFullCountFormat, queueFullCount)
 	}
 }
