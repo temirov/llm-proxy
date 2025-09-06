@@ -12,6 +12,9 @@ const (
 	headerAccept              = "Accept"
 	headerAuthorizationPrefix = "Bearer "
 
+	// rootPath defines the HTTP path for the root endpoint.
+	rootPath = "/"
+
 	queryParameterPrompt       = "prompt"
 	queryParameterKey          = "key"
 	queryParameterModel        = "model"
