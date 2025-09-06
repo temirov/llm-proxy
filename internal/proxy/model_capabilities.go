@@ -12,6 +12,9 @@ const (
 // --- Request Payload Structs ---
 // These structs are mapped directly to the capabilities of known models.
 
+// Reasoning specifies configuration options for reasoning-capable models.
+// Effort indicates the desired reasoning intensity and uses constants such as
+// reasoningEffortMinimal or reasoningEffortMedium.
 type Reasoning struct {
 	Effort string `json:"effort"`
 }
