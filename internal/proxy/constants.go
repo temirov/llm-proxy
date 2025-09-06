@@ -81,6 +81,15 @@ const (
 	keyReasoning       = "reasoning"
 	keyAuto            = "auto"
 
+	// keyPreviousResponseID identifies the prior response in a continuation request.
+	keyPreviousResponseID = "previous_response_id"
+	// keyText identifies a text format hint in request payloads.
+	keyText = "text"
+	// keyFormat indicates the desired format for a text hint.
+	keyFormat = "format"
+	// keyVerbosity specifies the verbosity level for a text hint.
+	keyVerbosity = "verbosity"
+
 	jsonFieldID                   = "id"
 	jsonFieldStatus               = "status"
 	jsonFieldOutputText           = "output_text"
