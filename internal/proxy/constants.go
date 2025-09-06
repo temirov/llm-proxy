@@ -34,7 +34,6 @@ const (
 	// errorMissingClientKey indicates that the key query parameter is missing.
 	errorMissingClientKey   = "unknown client key"
 	errorRequestTimedOut    = "request timed out"
-	errorRequestBuild       = "request build error"
 	errorOpenAIRequest      = "OpenAI request error"
 	errorOpenAIAPI          = "OpenAI API error"
 	errorOpenAIAPINoText    = "OpenAI API error (no text)"
