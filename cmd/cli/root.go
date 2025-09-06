@@ -57,6 +57,8 @@ const (
 	messageServiceSecretEmpty = "SERVICE_SECRET is empty; refusing to start"
 	// messageOpenAIAPIKeyEmpty is logged when OPENAI_API_KEY is missing.
 	messageOpenAIAPIKeyEmpty = "OPENAI_API_KEY is empty; refusing to start"
+	// logEventStartingProxy indicates the proxy is starting.
+	logEventStartingProxy = "starting proxy"
 )
 
 var config proxy.Configuration
@@ -152,7 +154,7 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 			return apperrors.ErrMissingOpenAIKey
 		}
 
-		sugar.Infow("starting proxy",
+		sugar.Infow(logEventStartingProxy,
 			"port", config.Port,
 			"log_level", strings.ToLower(config.LogLevel),
 			"secret_fingerprint", utils.Fingerprint(config.ServiceSecret),
