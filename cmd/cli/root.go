@@ -97,53 +97,53 @@ var rootCmd = &cobra.Command{
 	Short:   rootCmdShort,
 	Long:    rootCmdLong,
 	Example: rootCmdExample,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if !cmd.Flags().Changed(flagServiceSecret) {
+	RunE: func(command *cobra.Command, arguments []string) error {
+		if !command.Flags().Changed(flagServiceSecret) {
 			config.ServiceSecret = strings.TrimSpace(strings.Trim(viper.GetString(keyServiceSecret), quoteCharacters))
 		}
-		if !cmd.Flags().Changed(flagOpenAIAPIKey) {
+		if !command.Flags().Changed(flagOpenAIAPIKey) {
 			config.OpenAIKey = strings.TrimSpace(strings.Trim(viper.GetString(keyOpenAIAPIKey), quoteCharacters))
 		}
-		if !cmd.Flags().Changed(flagPort) {
+		if !command.Flags().Changed(flagPort) {
 			config.Port = viper.GetInt(keyPort)
 		}
 		if config.Port == 0 {
 			config.Port = proxy.DefaultPort
 		}
-		if !cmd.Flags().Changed(flagLogLevel) {
+		if !command.Flags().Changed(flagLogLevel) {
 			config.LogLevel = viper.GetString(keyLogLevel)
 		}
 		if config.LogLevel == "" {
 			config.LogLevel = proxy.LogLevelInfo
 		}
-		if !cmd.Flags().Changed(flagSystemPrompt) {
+		if !command.Flags().Changed(flagSystemPrompt) {
 			config.SystemPrompt = viper.GetString(keySystemPrompt)
 		}
-		if !cmd.Flags().Changed(flagWorkers) {
+		if !command.Flags().Changed(flagWorkers) {
 			config.WorkerCount = viper.GetInt(keyWorkers)
 		}
 		if config.WorkerCount == 0 {
 			config.WorkerCount = proxy.DefaultWorkers
 		}
-		if !cmd.Flags().Changed(flagQueueSize) {
+		if !command.Flags().Changed(flagQueueSize) {
 			config.QueueSize = viper.GetInt(keyQueueSize)
 		}
 		if config.QueueSize == 0 {
 			config.QueueSize = proxy.DefaultQueueSize
 		}
-		if !cmd.Flags().Changed(flagRequestTimeout) {
+		if !command.Flags().Changed(flagRequestTimeout) {
 			config.RequestTimeoutSeconds = viper.GetInt(keyRequestTimeoutSeconds)
 		}
 		if config.RequestTimeoutSeconds == 0 {
 			config.RequestTimeoutSeconds = proxy.DefaultRequestTimeoutSeconds
 		}
-		if !cmd.Flags().Changed(flagUpstreamPollTimeout) {
+		if !command.Flags().Changed(flagUpstreamPollTimeout) {
 			config.UpstreamPollTimeoutSeconds = viper.GetInt(keyUpstreamPollTimeoutSeconds)
 		}
 		if config.UpstreamPollTimeoutSeconds == 0 {
 			config.UpstreamPollTimeoutSeconds = proxy.DefaultUpstreamPollTimeoutSeconds
 		}
-		if !cmd.Flags().Changed(flagMaxOutputTokens) {
+		if !command.Flags().Changed(flagMaxOutputTokens) {
 			config.MaxOutputTokens = viper.GetInt(keyMaxOutputTokens)
 		}
 		if config.MaxOutputTokens == 0 {
