@@ -127,6 +127,23 @@ Not all models support tools; for **web search**, use `gpt-4o` or `gpt-4.1`.
 * All requests must include the shared secret via `key=...`.
 * Do not expose this service to the public internet without appropriate network controls.
 
+## Releasing
+
+To publish a new version:
+
+1. Update `CHANGELOG.md` with a new section describing the release.
+2. Commit the change.
+3. Tag the commit and push both the branch and tag:
+
+   ```bash
+   git tag vX.Y.Z
+   git push origin master
+   git push origin vX.Y.Z
+   ```
+
+Tags that begin with `v` trigger the release workflow, which builds binaries and uses the matching changelog section as
+release notes.
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](MIT-LICENSE) for
