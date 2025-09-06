@@ -81,7 +81,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 
 	requestContext, cancelRequest := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancelRequest()
-	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, ResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
+	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, DefaultEndpoints.GetResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
 	if buildError != nil {
 		structuredLogger.Errorw(logEventBuildHTTPRequest, constants.LogFieldError, buildError)
 		return constants.EmptyString, errors.New(errorRequestBuild)
@@ -218,7 +218,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 
 // continueResponse signals to the API that a response session should proceed (legacy non-terminal case).
 func continueResponse(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) error {
-	resourceURL := ResponsesURL() + "/" + responseIdentifier + "/continue"
+	resourceURL := DefaultEndpoints.GetResponsesURL() + "/" + responseIdentifier + "/continue"
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 
@@ -285,7 +285,7 @@ func startSynthesisContinuation(openAIKey string, previousResponseID string, mod
 
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
-	req, buildErr := buildAuthorizedJSONRequest(ctx, http.MethodPost, ResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
+	req, buildErr := buildAuthorizedJSONRequest(ctx, http.MethodPost, DefaultEndpoints.GetResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
 	if buildErr != nil {
 		return "", buildErr
 	}
@@ -332,7 +332,7 @@ func pollResponseUntilDone(openAIKey string, responseIdentifier string, structur
 
 // fetchResponseByID retrieves a response by identifier and reports whether the response is complete.
 func fetchResponseByID(deadline time.Time, openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, bool, error) {
-	resourceURL := ResponsesURL() + "/" + responseIdentifier
+	resourceURL := DefaultEndpoints.GetResponsesURL() + "/" + responseIdentifier
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 
