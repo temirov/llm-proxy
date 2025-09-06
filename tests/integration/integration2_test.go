@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/temirov/llm-proxy/internal/constants"
 	"github.com/temirov/llm-proxy/internal/proxy"
 )
 
@@ -89,12 +90,12 @@ func TestIntegrationConfiguration(testingInstance *testing.T) {
 	}{
 		{
 			name:        "missing_service_secret",
-			config:      proxy.Configuration{ServiceSecret: "", OpenAIKey: openAIKeyValue},
+			config:      proxy.Configuration{ServiceSecret: constants.EmptyString, OpenAIKey: openAIKeyValue},
 			expectError: "SERVICE_SECRET",
 		},
 		{
 			name:        "missing_openai_key",
-			config:      proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: ""},
+			config:      proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: constants.EmptyString},
 			expectError: "OPENAI_API_KEY",
 		},
 		{
@@ -106,7 +107,7 @@ func TestIntegrationConfiguration(testingInstance *testing.T) {
 	}
 	for _, testCase := range testCases {
 		testingInstance.Run(testCase.name, func(subTest *testing.T) {
-			if testCase.expectError != "" {
+			if testCase.expectError != constants.EmptyString {
 				_, buildRouterError := proxy.BuildRouter(testCase.config, newLogger(subTest))
 				if buildRouterError == nil || !strings.Contains(buildRouterError.Error(), testCase.expectError) {
 					subTest.Fatalf(expectedErrorFormat, testCase.expectError, buildRouterError)

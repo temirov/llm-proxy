@@ -27,29 +27,13 @@ type requestTask struct {
 	reply            chan result
 }
 
-// normalizeAndApplyTunables ensures configuration tunables have sensible defaults and updates package-level variables.
-func normalizeAndApplyTunables(configuration *Configuration) {
-	if configuration.RequestTimeoutSeconds <= 0 {
-		configuration.RequestTimeoutSeconds = DefaultRequestTimeoutSeconds
-	}
-	if configuration.UpstreamPollTimeoutSeconds <= 0 {
-		configuration.UpstreamPollTimeoutSeconds = DefaultUpstreamPollTimeoutSeconds
-	}
-	if configuration.MaxOutputTokens <= 0 {
-		configuration.MaxOutputTokens = DefaultMaxOutputTokens
-	}
-	requestTimeout = time.Duration(configuration.RequestTimeoutSeconds) * time.Second
-	upstreamPollTimeout = time.Duration(configuration.UpstreamPollTimeoutSeconds) * time.Second
-	maxOutputTokens = configuration.MaxOutputTokens
-}
-
 // BuildRouter constructs the HTTP router used by the proxy. configuration supplies queue sizes, worker counts, timeout values, API credentials and other settings. structuredLogger records structured log messages during routing.
 func BuildRouter(configuration Configuration, structuredLogger *zap.SugaredLogger) (*gin.Engine, error) {
 	if validationError := validateConfig(configuration); validationError != nil {
 		return nil, validationError
 	}
 
-	normalizeAndApplyTunables(&configuration)
+	configuration.ApplyTunables()
 
 	validator, validatorError := newModelValidator(configuration.OpenAIKey, structuredLogger)
 	if validatorError != nil {
@@ -102,18 +86,18 @@ func Serve(configuration Configuration, structuredLogger *zap.SugaredLogger) err
 func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validator *modelValidator, structuredLogger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(ginContext *gin.Context) {
 		userPrompt := ginContext.Query(queryParameterPrompt)
-		if userPrompt == "" {
+		if userPrompt == constants.EmptyString {
 			ginContext.String(http.StatusBadRequest, errorMissingPrompt)
 			return
 		}
 
 		systemPrompt := ginContext.Query(queryParameterSystemPrompt)
-		if systemPrompt == "" {
+		if systemPrompt == constants.EmptyString {
 			systemPrompt = defaultSystemPrompt
 		}
 
 		modelIdentifier := ginContext.Query(queryParameterModel)
-		if modelIdentifier == "" {
+		if modelIdentifier == constants.EmptyString {
 			modelIdentifier = DefaultModel
 		}
 		if verificationError := validator.Verify(modelIdentifier); verificationError != nil {
@@ -123,7 +107,7 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 
 		webSearchQuery := strings.TrimSpace(ginContext.Query(queryParameterWebSearch))
 		webSearchEnabled := false
-		if webSearchQuery != "" {
+		if webSearchQuery != constants.EmptyString {
 			parsedWebSearch, parseError := strconv.ParseBool(webSearchQuery)
 			if parseError != nil {
 				structuredLogger.Warnw(

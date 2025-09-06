@@ -52,6 +52,8 @@ const (
 	toolTypeWebSearch = "web_search"
 	// reasoningEffortMedium denotes a medium reasoning effort level.
 	reasoningEffortMedium = "medium"
+	// reasoningEffortMinimal denotes a minimal reasoning effort level.
+	reasoningEffortMinimal = "minimal"
 
 	// responseTypeMessage identifies a message output item in the upstream response.
 	responseTypeMessage = "message"
@@ -68,18 +70,26 @@ const (
 	keyRole = "role"
 	keyUser = "user"
 
-	keySystem          = "system"
-	keyAssistant       = "assistant"
-	keyContent         = "content"
-	keyModel           = "model"
-	keyInput           = "input"
-	keyTemperature     = "temperature"
-	keyMaxOutputTokens = "max_output_tokens"
-	keyTools           = "tools"
-	keyType            = "type"
-	keyToolChoice      = "tool_choice"
-	keyReasoning       = "reasoning"
-	keyAuto            = "auto"
+	keySystem             = "system"
+	keyAssistant          = "assistant"
+	keyContent            = "content"
+	keyModel              = "model"
+	keyInput              = "input"
+	keyTemperature        = "temperature"
+	keyMaxOutputTokens    = "max_output_tokens"
+	keyTools              = "tools"
+	keyType               = "type"
+	keyToolChoice         = "tool_choice"
+	keyReasoning          = "reasoning"
+	keyAuto               = "auto"
+	keyPreviousResponseID = "previous_response_id"
+	keyEffort             = "effort"
+	keyText               = "text"
+	keyFormat             = "format"
+	keyVerbosity          = "verbosity"
+	toolChoiceNone        = "none"
+	textFormatType        = "text"
+	verbosityLow          = "low"
 
 	// keyPreviousResponseID identifies the prior response in a continuation request.
 	keyPreviousResponseID = "previous_response_id"

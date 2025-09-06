@@ -29,6 +29,11 @@ var (
 	upstreamPollTimeout time.Duration
 )
 
+const (
+	synthesisInstructionPrimary = "Now synthesize the final answer with concise citations."
+	synthesisInstructionRetry   = "Produce the final answer now as plain text with concise citations. Do not call tools. Do not include hidden reasoning."
+)
+
 // UpstreamPollTimeout returns the current upstream poll timeout.
 func UpstreamPollTimeout() time.Duration { return upstreamPollTimeout }
 
@@ -244,64 +249,65 @@ func continueResponse(openAIKey string, responseIdentifier string, structuredLog
 	return nil
 }
 
-// startSynthesisContinuation begins a synthesis-only pass by POSTing /v1/responses
-// with previous_response_id and tool_choice:"none". Returns the new response id.
+// startSynthesisContinuation begins a synthesis-only pass by POSTing /v1/responses with
+// previous_response_id and tool_choice set to "none". It allocates enough output tokens,
+// limits reasoning effort to minimal, and includes a low-verbosity text format hint.
+// When retryOrdinal is 1 the instruction is strengthened and the token limit is increased.
+// It returns the identifier of the new response.
 //
 // retryOrdinal==0 : first synthesis pass; retryOrdinal==1 : stricter retry
 func startSynthesisContinuation(openAIKey string, previousResponseID string, modelIdentifier string, structuredLogger *zap.SugaredLogger, retryOrdinal int) (string, error) {
-	// Give the assistant room to talk; also clamp reasoning to minimal so it doesn't consume the budget.
-	// On the retry, double tokens and sharpen the instruction.
-	outTokens := maxOutputTokens
-	if outTokens < 1536 {
-		outTokens = 1536
+	outputTokenLimit := maxOutputTokens
+	if outputTokenLimit < 1536 {
+		outputTokenLimit = 1536
 	}
 	if retryOrdinal == 1 {
-		if outTokens < 2048 {
-			outTokens = 2048
+		if outputTokenLimit < 2048 {
+			outputTokenLimit = 2048
 		}
 	}
 
-	instruction := "Now synthesize the final answer with concise citations."
+	instruction := synthesisInstructionPrimary
 	if retryOrdinal == 1 {
-		instruction = "Produce the final answer now as plain text with concise citations. Do not call tools. Do not include hidden reasoning."
+		instruction = synthesisInstructionRetry
 	}
 
 	payload := map[string]any{
 		keyModel:              modelIdentifier,
 		keyPreviousResponseID: previousResponseID,
-		keyToolChoice:         "none",
+		keyToolChoice:         toolChoiceNone,
 		keyInput:              instruction,
-		keyMaxOutputTokens:    outTokens,
+		keyMaxOutputTokens:    outputTokenLimit,
 		keyReasoning: map[string]any{
-			"effort": "minimal",
+			keyEffort: reasoningEffortMinimal,
 		},
 		keyText: map[string]any{
-			keyFormat:    map[string]any{keyType: "text"},
-			keyVerbosity: "low",
+			keyFormat:    map[string]any{keyType: textFormatType},
+			keyVerbosity: verbosityLow,
 		},
 	}
 	payloadBytes, _ := json.Marshal(payload)
 
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	defer cancel()
-	req, buildErr := buildAuthorizedJSONRequest(ctx, http.MethodPost, DefaultEndpoints.GetResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
-	if buildErr != nil {
-		return constants.EmptyString, buildErr
+	requestContext, cancelRequest := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancelRequest()
+	request, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, DefaultEndpoints.GetResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
+	if buildError != nil {
+		return constants.EmptyString, buildError
 	}
 
-	statusCode, respBytes, _, reqErr := performResponsesRequest(req, structuredLogger, logEventOpenAIRequestError)
-	if reqErr != nil {
-		return constants.EmptyString, reqErr
+	statusCode, responseBytes, _, requestError := performResponsesRequest(request, structuredLogger, logEventOpenAIRequestError)
+	if requestError != nil {
+		return constants.EmptyString, requestError
 	}
 	if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
 		return constants.EmptyString, errors.New(errorOpenAIAPI)
 	}
 
-	var decoded map[string]any
-	if json.Unmarshal(respBytes, &decoded) != nil {
+	var decodedResponse map[string]any
+	if json.Unmarshal(responseBytes, &decodedResponse) != nil {
 		return constants.EmptyString, errors.New(errorOpenAIAPI)
 	}
-	newID := utils.GetString(decoded, jsonFieldID)
+	newID := utils.GetString(decodedResponse, jsonFieldID)
 	if utils.IsBlank(newID) {
 		return constants.EmptyString, errors.New(errorOpenAIAPI)
 	}
