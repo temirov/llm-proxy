@@ -81,7 +81,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	payloadBytes, marshalError := json.Marshal(payload)
 	if marshalError != nil {
 		structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalError)
-		return constants.EmptyString, errors.New(errorRequestBuild)
+		return constants.EmptyString, marshalError
 	}
 
 	requestContext, cancelRequest := context.WithTimeout(context.Background(), requestTimeout)
@@ -89,7 +89,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, DefaultEndpoints.GetResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
 	if buildError != nil {
 		structuredLogger.Errorw(logEventBuildHTTPRequest, constants.LogFieldError, buildError)
-		return constants.EmptyString, errors.New(errorRequestBuild)
+		return constants.EmptyString, buildError
 	}
 
 	statusCode, responseBytes, latencyMillis, requestError := performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIRequestError)
