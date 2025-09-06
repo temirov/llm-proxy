@@ -132,7 +132,9 @@ const (
 	logEventOpenAIModelsListError        = "OpenAI models list error"
 	logEventOpenAIModelCapabilitiesError = "OpenAI model capabilities error"
 	logEventOpenAIPollError              = "OpenAI poll error"
-	logEventOpenAIContinueError          = "OpenAI continue error"
+	// logEventOpenAIPollResponseBody records the body returned when polling OpenAI for a response.
+	logEventOpenAIPollResponseBody = "OpenAI poll response body"
+	logEventOpenAIContinueError    = "OpenAI continue error"
 	// logEventOpenAIInitialResponseBody records the body of the initial response from OpenAI.
 	logEventOpenAIInitialResponseBody = "OpenAI initial response body"
 	// logEventMissingFinalMessage indicates that the response completed without a final assistant message.
