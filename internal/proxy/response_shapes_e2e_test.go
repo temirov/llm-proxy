@@ -56,13 +56,20 @@ func withStubbedProxy(t *testing.T, initialResponse, finalResponse string) http.
 	return router
 }
 
+// doRequest issues a request to the handler and returns the status code and response body.
 func doRequest(t *testing.T, handler http.Handler) (int, string) {
-	q := url.Values{}
-	q.Set("prompt", TestPrompt)
-	q.Set("model", TestModel)
-	q.Set("key", TestSecret)
+	const (
+		queryParamPrompt = "prompt"
+		queryParamModel  = "model"
+		queryParamKey    = "key"
+	)
 
-	req := httptest.NewRequest(http.MethodGet, "/?"+q.Encode(), nil)
+	queryParameters := url.Values{}
+	queryParameters.Set(queryParamPrompt, TestPrompt)
+	queryParameters.Set(queryParamModel, TestModel)
+	queryParameters.Set(queryParamKey, TestSecret)
+
+	req := httptest.NewRequest(http.MethodGet, "/?"+queryParameters.Encode(), nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec.Code, rec.Body.String()
