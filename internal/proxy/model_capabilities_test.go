@@ -1,6 +1,8 @@
 package proxy_test
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/temirov/llm-proxy/internal/proxy"
@@ -33,6 +35,83 @@ func TestResolveModelPayloadSchema(testFramework *testing.T) {
 		if !equalSlices(payloadSchema.AllowedRequestFields, testCase.expectFields) {
 			testFramework.Fatalf(messageFieldsMismatch, testCase.modelIdentifier, payloadSchema.AllowedRequestFields, testCase.expectFields)
 		}
+	}
+}
+
+// TestBuildRequestPayload verifies the correct payload structure is built for each model.
+func TestBuildRequestPayload(t *testing.T) {
+	// Dummy input for the builder
+	messages := []map[string]string{{"role": "user", "content": "hello"}}
+
+	testCases := []struct {
+		name                 string
+		modelIdentifier      string
+		webSearchEnabled     bool
+		expectTemperature    bool
+		expectTools          bool
+		expectToolChoiceAuto bool
+	}{
+		{
+			name:              "GPT-5 with web search",
+			modelIdentifier:   proxy.ModelNameGPT5,
+			webSearchEnabled:  true,
+			expectTemperature: false,
+			expectTools:       true,
+		},
+		{
+			name:              "GPT-5 without web search",
+			modelIdentifier:   proxy.ModelNameGPT5,
+			webSearchEnabled:  false,
+			expectTemperature: false,
+			expectTools:       false,
+		},
+		{
+			name:              "GPT-4o with web search",
+			modelIdentifier:   proxy.ModelNameGPT4o,
+			webSearchEnabled:  true,
+			expectTemperature: true,
+			expectTools:       true,
+		},
+		{
+			name:              "GPT-4o-mini (no tools)",
+			modelIdentifier:   proxy.ModelNameGPT4oMini,
+			webSearchEnabled:  true, // Ignored
+			expectTemperature: true,
+			expectTools:       false,
+		},
+		{
+			name:              "GPT-5-mini (base only)",
+			modelIdentifier:   proxy.ModelNameGPT5Mini,
+			webSearchEnabled:  true, // Ignored
+			expectTemperature: false,
+			expectTools:       false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := proxy.BuildRequestPayload(tc.modelIdentifier, messages, tc.webSearchEnabled)
+			payloadBytes, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatalf("Failed to marshal payload: %v", err)
+			}
+			payloadJSON := string(payloadBytes)
+
+			// Check for temperature
+			if tc.expectTemperature != strings.Contains(payloadJSON, `"temperature"`) {
+				t.Errorf("Mismatch in 'temperature' field presence. Got: %s, Want presence: %v", payloadJSON, tc.expectTemperature)
+			}
+
+			// Check for tools
+			if tc.expectTools != strings.Contains(payloadJSON, `"tools"`) {
+				t.Errorf("Mismatch in 'tools' field presence. Got: %s, Want presence: %v", payloadJSON, tc.expectTools)
+			}
+
+			// Check for tool_choice
+			if tc.expectTools != strings.Contains(payloadJSON, `"tool_choice"`) {
+				t.Errorf("Mismatch in 'tool_choice' field presence. Got: %s, Want presence: %v", payloadJSON, tc.expectTools)
+			}
+		})
 	}
 }
 

@@ -50,6 +50,7 @@ const (
 	keyRole            = "role"
 	keyUser            = "user"
 	keySystem          = "system"
+	keyAssistant       = "assistant"
 	keyContent         = "content"
 	keyModel           = "model"
 	keyInput           = "input"

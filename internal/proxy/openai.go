@@ -16,16 +16,6 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-
-	// unsupportedTemperatureParameterToken marks an error response mentioning the temperature parameter.
-	unsupportedTemperatureParameterToken = "'temperature'"
-	// unsupportedToolsParameterToken marks an error response mentioning the tools parameter.
-	unsupportedToolsParameterToken = "'tools'"
-	// defaultTemperature specifies the sampling temperature for supported models.
-	defaultTemperature = 0.7
-)
-
 // HTTPDoer executes HTTP requests, allowing the proxy to abstract the underlying HTTP client.
 type HTTPDoer interface {
 	Do(httpRequest *http.Request) (*http.Response, error)
@@ -44,78 +34,27 @@ func UpstreamPollTimeout() time.Duration { return upstreamPollTimeout }
 // SetUpstreamPollTimeout overrides the upstream poll timeout value.
 func SetUpstreamPollTimeout(newTimeout time.Duration) { upstreamPollTimeout = newTimeout }
 
-type responsesAPIShim struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-}
-
-// Tool represents a tool available to the model.
-type Tool struct {
-	Type string `json:"type"`
-}
-
-// OpenAIRequest defines the payload for the OpenAI responses API.
-type OpenAIRequest struct {
-	// Model is the model identifier.
-	Model string `json:"model"`
-	// Input is the list of messages forming the conversation.
-	Input []map[string]string `json:"input"`
-	// MaxOutputTokens limits the number of tokens generated in the response.
-	MaxOutputTokens int `json:"max_output_tokens"`
-	// Temperature adjusts the randomness of the response.
-	Temperature *float64 `json:"temperature,omitempty"`
-	// Tools lists the tools available to the model.
-	Tools []Tool `json:"tools,omitempty"`
-	// ToolChoice selects a tool to use for the request.
-	ToolChoice string `json:"tool_choice,omitempty"`
-}
-
-// filterPayload returns a new map containing only keys allowed by the schema.
-func filterPayload(candidate map[string]any, allowedFields []string) map[string]any {
-	filtered := make(map[string]any, len(allowedFields))
-	for _, field := range allowedFields {
-		if value, exists := candidate[field]; exists {
-			filtered[field] = value
-		}
-	}
-	return filtered
-}
-
 // openAIRequest sends a prompt to the OpenAI responses API and returns the resulting text.
-// It retries without unsupported parameters and polls for completion when needed.
 func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, systemPrompt string, webSearchEnabled bool, structuredLogger *zap.SugaredLogger) (string, error) {
 	messageList := []map[string]string{
 		{keyRole: keySystem, keyContent: systemPrompt},
 		{keyRole: keyUser, keyContent: userPrompt},
 	}
 
-	candidatePayload := map[string]any{
-		keyModel:           modelIdentifier,
-		keyInput:           messageList,
-		keyMaxOutputTokens: maxOutputTokens,
-		keyTemperature:     defaultTemperature,
-	}
-	if webSearchEnabled {
-		candidatePayload[keyTools] = []Tool{{Type: toolTypeWebSearch}}
-		candidatePayload[keyToolChoice] = keyAuto
-	}
+	// 1. Build the model-specific payload by calling the dedicated builder function.
+	payload := BuildRequestPayload(modelIdentifier, messageList, webSearchEnabled)
 
-	payloadSchema := ResolveModelPayloadSchema(modelIdentifier)
-
-	filteredPayload := filterPayload(candidatePayload, payloadSchema.AllowedRequestFields)
-
-	payloadBytes, marshalError := json.Marshal(filteredPayload)
+	// 2. Marshal the resulting payload struct.
+	payloadBytes, marshalError := json.Marshal(payload)
 	if marshalError != nil {
 		structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalError)
 		return constants.EmptyString, errors.New(errorRequestBuild)
 	}
 
+	// 3. Send the request and handle the response.
 	requestContext, cancelRequest := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancelRequest()
-	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, responsesURL, openAIKey, bytes.NewReader(payloadBytes))
+	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, ResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
 	if buildError != nil {
 		structuredLogger.Errorw(logEventBuildHTTPRequest, constants.LogFieldError, buildError)
 		return constants.EmptyString, errors.New(errorRequestBuild)
@@ -218,7 +157,7 @@ func pollResponseUntilDone(openAIKey string, responseIdentifier string, structur
 
 // fetchResponseByID retrieves a response by identifier and reports whether the response is complete.
 func fetchResponseByID(contextToUse context.Context, openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, bool, error) {
-	resourceURL := responsesURL + "/" + responseIdentifier
+	resourceURL := ResponsesURL() + "/" + responseIdentifier
 	requestContext, cancelRequest := context.WithTimeout(contextToUse, requestTimeout)
 	defer cancelRequest()
 	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodGet, resourceURL, openAIKey, nil)
@@ -260,6 +199,12 @@ type contentPart struct {
 }
 
 type contentContainer struct {
+	Content []contentPart `json:"content"`
+}
+
+// responseMessage models a message in the API response's message list.
+type responseMessage struct {
+	Role    string        `json:"role"`
 	Content []contentPart `json:"content"`
 }
 
@@ -340,6 +285,24 @@ func extractTextFromAny(container map[string]any, rawPayload []byte) string {
 		}
 	}
 	if len(envelope.Response) > 0 {
+		// New: Try to parse 'response' as a list of messages, which is the
+		// standard for completed jobs that used tools.
+		var messages []responseMessage
+		if json.Unmarshal(envelope.Response, &messages) == nil {
+			var assistantParts []contentPart
+			// Find the last message from the assistant, which contains the final answer.
+			for i := len(messages) - 1; i >= 0; i-- {
+				if messages[i].Role == keyAssistant {
+					assistantParts = messages[i].Content
+					break
+				}
+			}
+			if text := joinParts(assistantParts); text != constants.EmptyString {
+				return text
+			}
+		}
+
+		// Fallback for other possible 'response' shapes.
 		if text, ok := decodePartsFromRaw(envelope.Response); ok {
 			return text
 		}

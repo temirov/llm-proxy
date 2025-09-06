@@ -1,6 +1,98 @@
 package proxy
 
-import "strings"
+import (
+	"strings"
+)
+
+const (
+	// defaultTemperature specifies the sampling temperature for supported models.
+	defaultTemperature = 0.7
+)
+
+// --- Request Payload Structs ---
+// These structs are mapped directly to the capabilities of known models.
+
+// requestPayloadBase contains fields common to all requests.
+type requestPayloadBase struct {
+	Model           string              `json:"model"`
+	Input           []map[string]string `json:"input"`
+	MaxOutputTokens int                 `json:"max_output_tokens"`
+}
+
+// requestPayloadWithTools is for models supporting tools but not temperature (e.g., gpt-5).
+type requestPayloadWithTools struct {
+	requestPayloadBase
+	Tools      []Tool `json:"tools,omitempty"`
+	ToolChoice string `json:"tool_choice,omitempty"`
+}
+
+// requestPayloadWithTemperature is for models supporting temperature but not tools (e.g., gpt-4o-mini).
+type requestPayloadWithTemperature struct {
+	requestPayloadBase
+	Temperature *float64 `json:"temperature,omitempty"`
+}
+
+// requestPayloadFull is for models supporting both temperature and tools (e.g., gpt-4o, gpt-4.1).
+type requestPayloadFull struct {
+	requestPayloadBase
+	Temperature *float64 `json:"temperature,omitempty"`
+	Tools       []Tool   `json:"tools,omitempty"`
+	ToolChoice  string   `json:"tool_choice,omitempty"`
+}
+
+// Tool represents a tool available to the model.
+type Tool struct {
+	Type string `json:"type"`
+}
+
+// BuildRequestPayload selects the correct struct for the given model and returns it.
+func BuildRequestPayload(modelIdentifier string, messageList []map[string]string, webSearchEnabled bool) any {
+	base := requestPayloadBase{
+		Model:           modelIdentifier,
+		Input:           messageList,
+		MaxOutputTokens: maxOutputTokens,
+	}
+
+	// Declaratively choose the payload structure based on the model.
+	switch modelIdentifier {
+	case ModelNameGPT4o, ModelNameGPT41:
+		p := requestPayloadFull{requestPayloadBase: base}
+		temp := defaultTemperature
+		p.Temperature = &temp
+		if webSearchEnabled {
+			p.Tools = []Tool{{Type: toolTypeWebSearch}}
+			p.ToolChoice = keyAuto
+		}
+		return p
+	case ModelNameGPT5:
+		p := requestPayloadWithTools{requestPayloadBase: base}
+		if webSearchEnabled {
+			p.Tools = []Tool{{Type: toolTypeWebSearch}}
+			p.ToolChoice = keyAuto
+		}
+		return p
+	case ModelNameGPT4oMini:
+		p := requestPayloadWithTemperature{requestPayloadBase: base}
+		temp := defaultTemperature
+		p.Temperature = &temp
+		return p
+	case ModelNameGPT5Mini:
+		// This model has no optional parameters, so we use the base struct directly.
+		return base
+	default:
+		// Fallback for any unknown models, assuming full capabilities as a sensible default.
+		p := requestPayloadFull{requestPayloadBase: base}
+		temp := defaultTemperature
+		p.Temperature = &temp
+		if webSearchEnabled {
+			p.Tools = []Tool{{Type: toolTypeWebSearch}}
+			p.ToolChoice = keyAuto
+		}
+		return p
+	}
+}
+
+// --- Original file content below ---
 
 // ModelPayloadSchema lists request fields allowed by a model.
 type ModelPayloadSchema struct {
