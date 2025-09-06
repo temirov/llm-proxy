@@ -85,7 +85,7 @@ func BuildRouter(configuration Configuration, structuredLogger *zap.SugaredLogge
 	}
 
 	router.Use(gin.Recovery(), secretMiddleware(configuration.ServiceSecret, structuredLogger))
-	router.GET("/", chatHandler(taskQueue, configuration.SystemPrompt, validator, structuredLogger))
+	router.GET(rootPath, chatHandler(taskQueue, configuration.SystemPrompt, validator, structuredLogger))
 	return router, nil
 }
 
