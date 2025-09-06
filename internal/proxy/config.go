@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/temirov/llm-proxy/internal/apperrors"
+	"github.com/temirov/llm-proxy/internal/constants"
 )
 
 const (
@@ -16,12 +17,10 @@ const (
 	// DefaultQueueSize is the capacity of the internal request queue.
 	DefaultQueueSize = 100
 	// DefaultModel is the model identifier used when the client does not supply one.
-	DefaultModel = "gpt-4.1"
+	DefaultModel = ModelNameGPT41
 
-	modelsCacheTTL = 24 * time.Hour
-
-	DefaultRequestTimeoutSeconds      = 60 // overall app-side request timeout
-	DefaultUpstreamPollTimeoutSeconds = 20 // poll budget after "incomplete"
+	DefaultRequestTimeoutSeconds      = 180 // overall app-side request timeout
+	DefaultUpstreamPollTimeoutSeconds = 60  // poll budget after "incomplete"
 	DefaultMaxOutputTokens            = 1024
 )
 
@@ -41,10 +40,10 @@ type Configuration struct {
 
 // validateConfig confirms required settings are present.
 func validateConfig(config Configuration) error {
-	if strings.TrimSpace(config.ServiceSecret) == "" {
+	if strings.TrimSpace(config.ServiceSecret) == constants.EmptyString {
 		return apperrors.ErrMissingServiceSecret
 	}
-	if strings.TrimSpace(config.OpenAIKey) == "" {
+	if strings.TrimSpace(config.OpenAIKey) == constants.EmptyString {
 		return apperrors.ErrMissingOpenAIKey
 	}
 	return nil
@@ -54,3 +53,19 @@ var requestTimeout = 30 * time.Second
 
 // ErrUpstreamIncomplete indicates that the upstream provider returned an incomplete response before the poll deadline.
 var ErrUpstreamIncomplete = errors.New(errorUpstreamIncomplete)
+
+// ApplyTunables ensures tunable configuration values have sensible defaults and updates package-level parameters.
+func (configuration *Configuration) ApplyTunables() {
+	if configuration.RequestTimeoutSeconds <= 0 {
+		configuration.RequestTimeoutSeconds = DefaultRequestTimeoutSeconds
+	}
+	if configuration.UpstreamPollTimeoutSeconds <= 0 {
+		configuration.UpstreamPollTimeoutSeconds = DefaultUpstreamPollTimeoutSeconds
+	}
+	if configuration.MaxOutputTokens <= 0 {
+		configuration.MaxOutputTokens = DefaultMaxOutputTokens
+	}
+	requestTimeout = time.Duration(configuration.RequestTimeoutSeconds) * time.Second
+	SetUpstreamPollTimeout(time.Duration(configuration.UpstreamPollTimeoutSeconds) * time.Second)
+	maxOutputTokens = configuration.MaxOutputTokens
+}

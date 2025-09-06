@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -14,14 +15,6 @@ import (
 	"github.com/temirov/llm-proxy/internal/constants"
 	"github.com/temirov/llm-proxy/internal/utils"
 	"go.uber.org/zap"
-)
-
-const (
-
-	// unsupportedTemperatureParameterToken marks an error response mentioning the temperature parameter.
-	unsupportedTemperatureParameterToken = "'temperature'"
-	// unsupportedToolsParameterToken marks an error response mentioning the tools parameter.
-	unsupportedToolsParameterToken = "'tools'"
 )
 
 // HTTPDoer executes HTTP requests, allowing the proxy to abstract the underlying HTTP client.
@@ -36,77 +29,67 @@ var (
 	upstreamPollTimeout time.Duration
 )
 
+const (
+	synthesisInstructionPrimary = "Now synthesize the final answer with concise citations."
+	synthesisInstructionRetry   = "Produce the final answer now as plain text with concise citations. Do not call tools. Do not include hidden reasoning."
+)
+
 // UpstreamPollTimeout returns the current upstream poll timeout.
 func UpstreamPollTimeout() time.Duration { return upstreamPollTimeout }
 
 // SetUpstreamPollTimeout overrides the upstream poll timeout value.
 func SetUpstreamPollTimeout(newTimeout time.Duration) { upstreamPollTimeout = newTimeout }
 
-type responsesAPIShim struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-}
+// hasFinalMessage checks if the response payload contains the terminal assistant message.
+func hasFinalMessage(rawPayload []byte) bool {
+	var envelope struct {
+		Output []json.RawMessage `json:"output"`
+	}
+	if json.Unmarshal(rawPayload, &envelope) != nil {
+		return false // Can't parse, assume not final.
+	}
+	if len(envelope.Output) == 0 {
+		return false // No output, can't be final.
+	}
 
-// Tool represents a tool available to the model.
-type Tool struct {
-	Type string `json:"type"`
-}
+	for _, rawItem := range envelope.Output {
+		var header struct {
+			Type string `json:"type"`
+			Role string `json:"role"`
+		}
+		if json.Unmarshal(rawItem, &header) == nil && header.Type == responseTypeMessage && header.Role == responseRoleAssistant {
+			// Found the message, so this is a truly final response.
+			return true
+		}
+	}
 
-// OpenAIRequest defines the payload for the OpenAI responses API.
-type OpenAIRequest struct {
-	// Model is the model identifier.
-	Model string `json:"model"`
-	// Input is the list of messages forming the conversation.
-	Input []map[string]string `json:"input"`
-	// MaxOutputTokens limits the number of tokens generated in the response.
-	MaxOutputTokens int `json:"max_output_tokens"`
-	// Temperature adjusts the randomness of the response.
-	Temperature *float64 `json:"temperature,omitempty"`
-	// Tools lists the tools available to the model.
-	Tools []Tool `json:"tools,omitempty"`
-	// ToolChoice selects a tool to use for the request.
-	ToolChoice string `json:"tool_choice,omitempty"`
+	// No assistant message found.
+	return false
 }
 
 // openAIRequest sends a prompt to the OpenAI responses API and returns the resulting text.
-// It retries without unsupported parameters and polls for completion when needed.
 func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, systemPrompt string, webSearchEnabled bool, structuredLogger *zap.SugaredLogger) (string, error) {
-	messageList := []map[string]string{
-		{keyRole: keySystem, keyContent: systemPrompt},
-		{keyRole: keyUser, keyContent: userPrompt},
+	// The Responses API expects a single string input. We'll prepend the system prompt to the user prompt.
+	var combinedPrompt strings.Builder
+	if !utils.IsBlank(systemPrompt) {
+		combinedPrompt.WriteString(systemPrompt)
+		combinedPrompt.WriteString("\n\n")
 	}
+	combinedPrompt.WriteString(userPrompt)
 
-	modelCapabilities := ResolveModelSpecification(modelIdentifier)
-
-	requestPayload := OpenAIRequest{
-		Model:           modelIdentifier,
-		Input:           messageList,
-		MaxOutputTokens: maxOutputTokens,
-	}
-	if modelCapabilities.SupportsTemperature() {
-		temperature := 0.7
-		requestPayload.Temperature = &temperature
-	}
-	if webSearchEnabled && modelCapabilities.SupportsWebSearch() {
-		requestPayload.Tools = []Tool{{Type: toolTypeWebSearch}}
-		requestPayload.ToolChoice = keyAuto
-	}
-
-	payloadBytes, marshalError := json.Marshal(requestPayload)
+	payload := BuildRequestPayload(modelIdentifier, combinedPrompt.String(), webSearchEnabled)
+	payloadBytes, marshalError := json.Marshal(payload)
 	if marshalError != nil {
 		structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalError)
-		return constants.EmptyString, errors.New(errorRequestBuild)
+		return constants.EmptyString, marshalError
 	}
 
 	requestContext, cancelRequest := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancelRequest()
-	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, responsesURL, openAIKey, bytes.NewReader(payloadBytes))
+	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, DefaultEndpoints.GetResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
 	if buildError != nil {
 		structuredLogger.Errorw(logEventBuildHTTPRequest, constants.LogFieldError, buildError)
-		return constants.EmptyString, errors.New(errorRequestBuild)
+		return constants.EmptyString, buildError
 	}
 
 	statusCode, responseBytes, latencyMillis, requestError := performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIRequestError)
@@ -117,16 +100,14 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return constants.EmptyString, errors.New(errorOpenAIRequest)
 	}
 
-	var decodedObject map[string]any
-	if unmarshalError := json.Unmarshal(responseBytes, &decodedObject); unmarshalError != nil {
-		structuredLogger.Errorw(logEventParseOpenAIResponseFailed, constants.LogFieldError, unmarshalError)
-		decodedObject = nil
-	}
+	structuredLogger.Debugw(logEventOpenAIInitialResponseBody, logFieldResponseBody, string(responseBytes))
 
-	outputText := extractTextFromAny(decodedObject, responseBytes)
+	var decodedObject map[string]any
+	_ = json.Unmarshal(responseBytes, &decodedObject)
+
+	outputText := extractTextFromAny(responseBytes)
 	responseIdentifier := utils.GetString(decodedObject, jsonFieldID)
-	status := utils.GetString(decodedObject, jsonFieldStatus)
-	apiStatus := strings.ToLower(status)
+	apiStatus := utils.GetString(decodedObject, jsonFieldStatus)
 
 	structuredLogger.Infow(
 		logEventOpenAIResponse,
@@ -145,52 +126,202 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return constants.EmptyString, errors.New(errorOpenAIAPI)
 	}
 
-	if utils.IsBlank(outputText) && !utils.IsBlank(responseIdentifier) {
-		finalText, pollError := pollResponseUntilDone(openAIKey, responseIdentifier, structuredLogger)
+	isTerminalStatus := false
+	switch apiStatus {
+	case statusCompleted, statusSucceeded, statusDone, statusCancelled, statusFailed, statusErrored:
+		isTerminalStatus = true
+	}
+
+	// Detect the "completed but no assistant message" edge case.
+	forcedSynthesis := false
+	if isTerminalStatus && apiStatus == statusCompleted && !hasFinalMessage(responseBytes) {
+		// Tool phase finished without a final assistant message.
+		forcedSynthesis = true
+		structuredLogger.Debugw(logEventMissingFinalMessage)
+	}
+
+	// If the state is non-terminal OR we must force a synthesis continuation, proceed accordingly.
+	if (!isTerminalStatus || forcedSynthesis) && !utils.IsBlank(responseIdentifier) {
+
+		// Decide which response ID to poll:
+		//  - Non-terminal: ask upstream to keep going via POST /{id}/continue, then poll the same id
+		//  - Forced synthesis: create a new response (previous_response_id, tool_choice:"none"), then poll the new id
+		targetResponseID := responseIdentifier
+
+		if forcedSynthesis {
+			newID, synthErr := startSynthesisContinuation(openAIKey, responseIdentifier, modelIdentifier, structuredLogger /*retryOrdinal=*/, 0)
+			if synthErr != nil {
+				structuredLogger.Errorw(
+					logEventOpenAIContinueError,
+					logFieldID, responseIdentifier,
+					constants.LogFieldError, synthErr,
+				)
+				return constants.EmptyString, errors.New(errorOpenAIAPI)
+			}
+			targetResponseID = newID
+		} else {
+			if continueError := continueResponse(openAIKey, responseIdentifier, structuredLogger); continueError != nil {
+				structuredLogger.Errorw(
+					logEventOpenAIContinueError,
+					logFieldID, responseIdentifier,
+					constants.LogFieldError, continueError,
+				)
+				return constants.EmptyString, errors.New(errorOpenAIAPI)
+			}
+		}
+
+		finalText, pollError := pollResponseUntilDone(openAIKey, targetResponseID, structuredLogger)
 		if pollError != nil {
 			structuredLogger.Errorw(
 				logEventOpenAIPollError,
-				logFieldID,
-				responseIdentifier,
-				constants.LogFieldError,
-				pollError,
+				logFieldID, targetResponseID,
+				constants.LogFieldError, pollError,
 			)
 			return constants.EmptyString, errors.New(errorOpenAIAPI)
 		}
-		if utils.IsBlank(finalText) {
-			structuredLogger.Desugar().Error(
-				errorOpenAIAPI,
-				zap.Int(logFieldStatus, statusCode),
-				zap.ByteString(logFieldResponseBody, responseBytes),
-			)
-			return constants.EmptyString, errors.New(errorOpenAIAPINoText)
+		if !utils.IsBlank(finalText) {
+			return finalText, nil
 		}
-		return finalText, nil
+
+		// --- Fallback: one more synthesis continuation if still no text ---
+		if forcedSynthesis {
+			structuredLogger.Debugw(logEventRetryingSynthesis)
+			newID, synthErr := startSynthesisContinuation(openAIKey, targetResponseID, modelIdentifier, structuredLogger /*retryOrdinal=*/, 1)
+			if synthErr != nil {
+				structuredLogger.Errorw(
+					logEventOpenAIContinueError,
+					logFieldID, targetResponseID,
+					constants.LogFieldError, synthErr,
+				)
+				return constants.EmptyString, errors.New(errorOpenAIAPI)
+			}
+			targetResponseID = newID
+
+			finalText2, pollError2 := pollResponseUntilDone(openAIKey, targetResponseID, structuredLogger)
+			if pollError2 != nil {
+				structuredLogger.Errorw(
+					logEventOpenAIPollError,
+					logFieldID, targetResponseID,
+					constants.LogFieldError, pollError2,
+				)
+				return constants.EmptyString, errors.New(errorOpenAIAPI)
+			}
+			if !utils.IsBlank(finalText2) {
+				return finalText2, nil
+			}
+		}
+
+		return constants.EmptyString, errors.New(errorOpenAIAPINoText)
 	}
 
+	// If the initial response is terminal but we couldn't extract text, it's an error.
 	if utils.IsBlank(outputText) {
-		structuredLogger.Desugar().Error(
-			errorOpenAIAPI,
-			zap.Int(logFieldStatus, statusCode),
-			zap.ByteString(logFieldResponseBody, responseBytes),
-		)
 		return constants.EmptyString, errors.New(errorOpenAIAPI)
 	}
 	return outputText, nil
 }
 
+// continueResponse signals to the API that a response session should proceed (legacy non-terminal case).
+func continueResponse(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) error {
+	resourceURL := DefaultEndpoints.GetResponsesURL() + "/" + responseIdentifier + "/continue"
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancel()
+
+	httpRequest, buildError := buildAuthorizedJSONRequest(ctx, http.MethodPost, resourceURL, openAIKey, nil)
+	if buildError != nil {
+		return buildError
+	}
+
+	statusCode, responseBytes, _, requestError := performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIContinueError)
+	if requestError != nil {
+		return requestError
+	}
+
+	if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
+		structuredLogger.Desugar().Error(
+			errorOpenAIContinue,
+			zap.Int(logFieldStatus, statusCode),
+			zap.ByteString(logFieldResponseBody, responseBytes),
+			zap.String(logFieldID, responseIdentifier),
+		)
+		return errors.New(errorOpenAIContinue)
+	}
+	return nil
+}
+
+// startSynthesisContinuation begins a synthesis-only pass by POSTing /v1/responses with
+// previous_response_id and tool_choice set to "none". It allocates enough output tokens,
+// limits reasoning effort to minimal, and includes a low-verbosity text format hint.
+// When retryOrdinal is 1 the instruction is strengthened and the token limit is increased.
+// It returns the identifier of the new response.
+//
+// retryOrdinal==0 : first synthesis pass; retryOrdinal==1 : stricter retry
+func startSynthesisContinuation(openAIKey string, previousResponseID string, modelIdentifier string, structuredLogger *zap.SugaredLogger, retryOrdinal int) (string, error) {
+	outputTokenLimit := maxOutputTokens
+	if outputTokenLimit < 1536 {
+		outputTokenLimit = 1536
+	}
+	if retryOrdinal == 1 {
+		if outputTokenLimit < 2048 {
+			outputTokenLimit = 2048
+		}
+	}
+
+	instruction := synthesisInstructionPrimary
+	if retryOrdinal == 1 {
+		instruction = synthesisInstructionRetry
+	}
+
+	payload := map[string]any{
+		keyModel:              modelIdentifier,
+		keyPreviousResponseID: previousResponseID,
+		keyToolChoice:         toolChoiceNone,
+		keyInput:              instruction,
+		keyMaxOutputTokens:    outputTokenLimit,
+		keyReasoning: map[string]any{
+			keyEffort: reasoningEffortMinimal,
+		},
+		keyText: map[string]any{
+			keyFormat:    map[string]any{keyType: textFormatType},
+			keyVerbosity: verbosityLow,
+		},
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	requestContext, cancelRequest := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancelRequest()
+	request, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, DefaultEndpoints.GetResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
+	if buildError != nil {
+		return constants.EmptyString, buildError
+	}
+
+	statusCode, responseBytes, _, requestError := performResponsesRequest(request, structuredLogger, logEventOpenAIRequestError)
+	if requestError != nil {
+		return constants.EmptyString, requestError
+	}
+	if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
+		return constants.EmptyString, errors.New(errorOpenAIAPI)
+	}
+
+	var decodedResponse map[string]any
+	if json.Unmarshal(responseBytes, &decodedResponse) != nil {
+		return constants.EmptyString, errors.New(errorOpenAIAPI)
+	}
+	newID := utils.GetString(decodedResponse, jsonFieldID)
+	if utils.IsBlank(newID) {
+		return constants.EmptyString, errors.New(errorOpenAIAPI)
+	}
+	return newID, nil
+}
+
 // pollResponseUntilDone repeatedly fetches a response until it is complete or the poll timeout elapses.
 func pollResponseUntilDone(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, error) {
 	deadlineInstant := time.Now().Add(upstreamPollTimeout)
-	pollInterval := 300 * time.Millisecond
-
 	for {
 		if time.Now().After(deadlineInstant) {
 			return constants.EmptyString, ErrUpstreamIncomplete
 		}
-		pollContext, cancelPoll := context.WithDeadline(context.Background(), deadlineInstant)
-		textCandidate, responseComplete, fetchError := fetchResponseByID(pollContext, openAIKey, responseIdentifier, structuredLogger)
-		cancelPoll()
+		textCandidate, responseComplete, fetchError := fetchResponseByID(deadlineInstant, openAIKey, responseIdentifier, structuredLogger)
 		if fetchError != nil {
 			return constants.EmptyString, fetchError
 		}
@@ -200,35 +331,36 @@ func pollResponseUntilDone(openAIKey string, responseIdentifier string, structur
 		if responseComplete {
 			return constants.EmptyString, errors.New(errorOpenAIAPINoText)
 		}
-		time.Sleep(pollInterval)
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 
 // fetchResponseByID retrieves a response by identifier and reports whether the response is complete.
-func fetchResponseByID(contextToUse context.Context, openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, bool, error) {
-	resourceURL := responsesURL + "/" + responseIdentifier
-	requestContext, cancelRequest := context.WithTimeout(contextToUse, requestTimeout)
-	defer cancelRequest()
-	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodGet, resourceURL, openAIKey, nil)
+func fetchResponseByID(deadline time.Time, openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, bool, error) {
+	resourceURL := DefaultEndpoints.GetResponsesURL() + "/" + responseIdentifier
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+
+	httpRequest, buildError := buildAuthorizedJSONRequest(ctx, http.MethodGet, resourceURL, openAIKey, nil)
 	if buildError != nil {
 		return constants.EmptyString, false, buildError
 	}
 
 	_, responseBytes, _, requestError := performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIPollError)
 	if requestError != nil {
-		if errors.Is(requestError, context.DeadlineExceeded) {
-			return constants.EmptyString, false, requestError
-		}
-		return constants.EmptyString, false, errors.New(errorOpenAIRequest)
+		return constants.EmptyString, false, requestError
 	}
 
+	structuredLogger.Debugw(
+		"OpenAI poll response body",
+		logFieldID, responseIdentifier,
+		logFieldResponseBody, string(responseBytes),
+	)
+
 	var decodedObject map[string]any
-	if unmarshalError := json.Unmarshal(responseBytes, &decodedObject); unmarshalError != nil {
-		structuredLogger.Errorw(logEventParseOpenAIResponseFailed, constants.LogFieldError, unmarshalError)
-		decodedObject = nil
-	}
+	_ = json.Unmarshal(responseBytes, &decodedObject)
 	responseStatus := strings.ToLower(utils.GetString(decodedObject, jsonFieldStatus))
-	outputText := extractTextFromAny(decodedObject, responseBytes)
+	outputText := extractTextFromAny(responseBytes)
 
 	switch responseStatus {
 	case statusCompleted, statusSucceeded, statusDone:
@@ -240,106 +372,96 @@ func fetchResponseByID(contextToUse context.Context, openAIKey string, responseI
 	}
 }
 
-// ---- shared shapes for response decoding ----
-
+// --- Final, Corrected Response Parser ---
+type outputItem struct {
+	Type    string          `json:"type"`
+	Role    string          `json:"role"`
+	Content []contentPart   `json:"content"`
+	Action  json.RawMessage `json:"action"`
+}
 type contentPart struct {
 	Type string `json:"type"`
 	Text string `json:"text"`
 }
-
-type contentContainer struct {
-	Content []contentPart `json:"content"`
+type searchAction struct {
+	Query string `json:"query"`
 }
 
-// joinParts concatenates non-empty texts with a single line break between parts.
 func joinParts(parts []contentPart) string {
 	var builder strings.Builder
 	for _, part := range parts {
-		text := strings.TrimSpace(part.Text)
-		if text == constants.EmptyString {
-			continue
+		if part.Type == outputPartType || part.Type == textPartType {
+			text := strings.TrimSpace(part.Text)
+			if text != constants.EmptyString {
+				if builder.Len() > 0 {
+					builder.WriteString(constants.LineBreak)
+				}
+				builder.WriteString(text)
+			}
 		}
-		if builder.Len() > 0 {
-			builder.WriteString(constants.LineBreak)
-		}
-		builder.WriteString(text)
 	}
 	return builder.String()
 }
 
-// decodePartsFromRaw tries both shapes for a list of text parts:
-// 1) []contentContainer (each has .content[])
-// 2) []contentPart (flat array)
-// Returns (text, true) if anything decodes to non-empty text.
-func decodePartsFromRaw(raw json.RawMessage) (string, bool) {
-	// Try nested: []contentContainer
-	var nested []contentContainer
-	if json.Unmarshal(raw, &nested) == nil && len(nested) > 0 {
-		var allParts []contentPart
-		for _, container := range nested {
-			if len(container.Content) > 0 {
-				allParts = append(allParts, container.Content...)
-			}
-		}
-		if text := joinParts(allParts); text != constants.EmptyString {
-			return text, true
-		}
-	}
-
-	// Try flat: []contentPart
-	var flat []contentPart
-	if json.Unmarshal(raw, &flat) == nil && len(flat) > 0 {
-		if text := joinParts(flat); text != constants.EmptyString {
-			return text, true
-		}
-	}
-
-	return constants.EmptyString, false
-}
-
-// extractTextFromAny obtains text content from known response shapes using a single unmarshal pass.
-func extractTextFromAny(container map[string]any, rawPayload []byte) string {
-	// Fast path: direct "output_text"
-	if container != nil {
-		if direct, ok := container[jsonFieldOutputText].(string); ok && !utils.IsBlank(direct) {
-			return direct
-		}
-	}
-
-	// General envelope shapes.
+// extractTextFromAny parses the final response from OpenAI.
+func extractTextFromAny(rawPayload []byte) string {
 	var envelope struct {
-		Output   json.RawMessage `json:"output"`
-		Response json.RawMessage `json:"response"`
-		// Fallback compatibility for choices[].message.content
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+		OutputText string            `json:"output_text"`
+		Output     []json.RawMessage `json:"output"` // Use json.RawMessage for resilience
 	}
-	if unmarshalError := json.Unmarshal(rawPayload, &envelope); unmarshalError != nil {
+
+	if json.Unmarshal(rawPayload, &envelope) != nil {
 		return constants.EmptyString
 	}
 
-	// Explicit precedence: output → response → choices fallback
+	// 1. Prioritize `output_text` as the most reliable source.
+	if !utils.IsBlank(envelope.OutputText) {
+		return envelope.OutputText
+	}
+
+	// 2. If `output_text` is missing, parse the `output` array for the assistant's message.
 	if len(envelope.Output) > 0 {
-		if text, ok := decodePartsFromRaw(envelope.Output); ok {
-			return text
+		for _, rawItem := range envelope.Output {
+			var header struct {
+				Type string `json:"type"`
+				Role string `json:"role"`
+			}
+			if json.Unmarshal(rawItem, &header) == nil && header.Type == responseTypeMessage && header.Role == responseRoleAssistant {
+				var msgItem outputItem
+				if json.Unmarshal(rawItem, &msgItem) == nil {
+					return joinParts(msgItem.Content)
+				}
+			}
 		}
 	}
-	if len(envelope.Response) > 0 {
-		if text, ok := decodePartsFromRaw(envelope.Response); ok {
-			return text
+
+	// 3. If no message was found, create a fallback from the last tool call.
+	if len(envelope.Output) > 0 {
+		lastQuery := constants.EmptyString
+		for outputIndex := len(envelope.Output) - 1; outputIndex >= 0; outputIndex-- {
+			rawItem := envelope.Output[outputIndex]
+			var header struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal(rawItem, &header) == nil && header.Type == responseTypeWebSearchCall {
+				var searchItem struct {
+					Action searchAction `json:"action"`
+				}
+				if json.Unmarshal(rawItem, &searchItem) == nil && !utils.IsBlank(searchItem.Action.Query) {
+					lastQuery = searchItem.Action.Query
+					break
+				}
+			}
+		}
+		if !utils.IsBlank(lastQuery) {
+			return fmt.Sprintf(fallbackFinalAnswerFormat, lastQuery)
 		}
 	}
-	if len(envelope.Choices) > 0 {
-		return strings.TrimSpace(envelope.Choices[0].Message.Content)
-	}
+
 	return constants.EmptyString
 }
 
-// performResponsesRequest executes the HTTP request and retries when the status code indicates a server error.
-// The retries continue with exponential backoff until the request context deadline is exceeded.
+// --- HTTP and Helper Functions ---
 func performResponsesRequest(httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEvent string) (int, []byte, int64, error) {
 	var statusCode int
 	var responseBytes []byte
@@ -350,7 +472,8 @@ func performResponsesRequest(httpRequest *http.Request, structuredLogger *zap.Su
 		if transportError != nil {
 			return transportError
 		}
-		if statusCode >= http.StatusInternalServerError {
+		// Retry on server errors (5xx) and rate limit errors (429).
+		if statusCode >= http.StatusInternalServerError || statusCode == http.StatusTooManyRequests {
 			return errors.New(errorOpenAIAPI)
 		}
 		return nil
@@ -361,13 +484,14 @@ func performResponsesRequest(httpRequest *http.Request, structuredLogger *zap.Su
 	return statusCode, responseBytes, latencyMillis, retryError
 }
 
-// buildAuthorizedJSONRequest constructs an HTTP request with authorization and JSON content type headers using the provided context.
 func buildAuthorizedJSONRequest(contextToUse context.Context, method string, resourceURL string, openAIKey string, body io.Reader) (*http.Request, error) {
-	httpRequest, httpRequestError := http.NewRequestWithContext(contextToUse, method, resourceURL, body)
+	httpReq, httpRequestError := http.NewRequestWithContext(contextToUse, method, resourceURL, body)
 	if httpRequestError != nil {
 		return nil, httpRequestError
 	}
-	httpRequest.Header.Set(headerAuthorization, headerAuthorizationPrefix+openAIKey)
-	httpRequest.Header.Set(headerContentType, mimeApplicationJSON)
-	return httpRequest, nil
+	httpReq.Header.Set(headerAuthorization, headerAuthorizationPrefix+openAIKey)
+	if body != nil {
+		httpReq.Header.Set(headerContentType, mimeApplicationJSON)
+	}
+	return httpReq, nil
 }

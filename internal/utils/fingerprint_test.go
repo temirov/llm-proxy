@@ -3,11 +3,12 @@ package utils_test
 import (
 	"testing"
 
+	"github.com/temirov/llm-proxy/internal/constants"
 	"github.com/temirov/llm-proxy/internal/utils"
 )
 
 const (
-	secretEmpty         = ""
+	secretEmpty         = constants.EmptyString
 	secretABC           = "abc"
 	secretLLMProxy      = "llm-proxy"
 	fingerprintEmpty    = "e3b0c442"

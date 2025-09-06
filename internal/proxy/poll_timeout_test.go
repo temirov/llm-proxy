@@ -1,9 +1,6 @@
 package proxy_test
 
 import (
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -11,42 +8,24 @@ import (
 	"go.uber.org/zap"
 )
 
-// Test string constants.
-const (
-	serviceSecretValue           = "sekret"
-	openAIKeyValue               = "sk-test"
-	modelsPath                   = "/v1/models"
-	modelsListResponse           = "{\"data\":[{\"id\":\"gpt-4o\"}]}"
-	messageBuildRouterError      = "BuildRouter error: %v"
-	messageUnexpectedPollTimeout = "upstreamPollTimeout=%v want=%v"
-)
-
-// TestBuildRouterAppliesDefaultUpstreamPollTimeout verifies that BuildRouter sets the upstream poll timeout to the default value when the configuration omits UpstreamPollTimeoutSeconds.
+// TestBuildRouterAppliesDefaultUpstreamPollTimeout verifies that BuildRouter sets the
+// upstream poll timeout to the default value when the configuration omits it.
 func TestBuildRouterAppliesDefaultUpstreamPollTimeout(testFramework *testing.T) {
-	modelsServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
-		io.WriteString(responseWriter, modelsListResponse)
-	}))
-	defer modelsServer.Close()
-
-	proxy.SetModelsURL(modelsServer.URL + modelsPath)
-	proxy.HTTPClient = modelsServer.Client()
-	testFramework.Cleanup(proxy.ResetModelsURL)
-	testFramework.Cleanup(func() { proxy.HTTPClient = http.DefaultClient })
-
 	loggerInstance, _ := zap.NewDevelopment()
-	defer loggerInstance.Sync()
+	defer func() { _ = loggerInstance.Sync() }()
 
 	previousPollTimeout := proxy.UpstreamPollTimeout()
 	defer proxy.SetUpstreamPollTimeout(previousPollTimeout)
 
 	_, buildRouterError := proxy.BuildRouter(proxy.Configuration{
-		ServiceSecret:              serviceSecretValue,
-		OpenAIKey:                  openAIKeyValue,
+		ServiceSecret:              TestSecret,
+		OpenAIKey:                  TestAPIKey,
 		LogLevel:                   proxy.LogLevelDebug,
 		WorkerCount:                1,
 		QueueSize:                  1,
-		UpstreamPollTimeoutSeconds: 0,
+		UpstreamPollTimeoutSeconds: 0, // Explicitly set to 0 to test default behavior
 	}, loggerInstance.Sugar())
+
 	if buildRouterError != nil {
 		testFramework.Fatalf(messageBuildRouterError, buildRouterError)
 	}

@@ -57,9 +57,26 @@ const (
 	messageServiceSecretEmpty = "SERVICE_SECRET is empty; refusing to start"
 	// messageOpenAIAPIKeyEmpty is logged when OPENAI_API_KEY is missing.
 	messageOpenAIAPIKeyEmpty = "OPENAI_API_KEY is empty; refusing to start"
+	// logEventStartingProxy indicates the proxy is starting.
+	logEventStartingProxy = "starting proxy"
 )
 
 var config proxy.Configuration
+
+const (
+	// rootCmdShort provides a brief description of the root command.
+	// Additional commands should define their short description using a constant following this pattern.
+	rootCmdShort = "Tiny HTTP proxy for ChatGPT"
+
+	// rootCmdLong provides a detailed description of the root command.
+	// Additional commands should define their long description using a constant following this pattern.
+	rootCmdLong = "Accepts GET /?prompt=…&key=SECRET and forwards to OpenAI."
+
+	// rootCmdExample demonstrates how to use the root command.
+	// Additional commands should define their usage examples using a constant following this pattern.
+	rootCmdExample = `llm-proxy --service_secret=mysecret --openai_api_key=sk-xxxxx --log_level=debug
+SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`
+)
 
 // Execute runs the command-line interface.
 func Execute() {
@@ -71,11 +88,10 @@ func Execute() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "llm-proxy",
-	Short: "Tiny HTTP proxy for ChatGPT",
-	Long:  "Accepts GET /?prompt=…&key=SECRET and forwards to OpenAI.",
-	Example: `llm-proxy --service_secret=mysecret --openai_api_key=sk-xxxxx --log_level=debug
-SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
+	Use:     "llm-proxy",
+	Short:   rootCmdShort,
+	Long:    rootCmdLong,
+	Example: rootCmdExample,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !cmd.Flags().Changed(flagServiceSecret) {
 			config.ServiceSecret = strings.TrimSpace(strings.Trim(viper.GetString(keyServiceSecret), quoteCharacters))
@@ -152,7 +168,7 @@ SERVICE_SECRET=mysecret OPENAI_API_KEY=sk-xxxxx LOG_LEVEL=debug llm-proxy`,
 			return apperrors.ErrMissingOpenAIKey
 		}
 
-		sugar.Infow("starting proxy",
+		sugar.Infow(logEventStartingProxy,
 			"port", config.Port,
 			"log_level", strings.ToLower(config.LogLevel),
 			"secret_fingerprint", utils.Fingerprint(config.ServiceSecret),

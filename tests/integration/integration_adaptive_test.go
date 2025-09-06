@@ -31,19 +31,19 @@ func (roundTripper adaptiveRoundTripper) RoundTrip(httpRequest *http.Request) (*
 
 // newAdaptiveClient returns an HTTP client that adapts to unsupported parameters.
 func newAdaptiveClient(testingInstance *testing.T, mode string) *http.Client {
-        testingInstance.Helper()
-        return &http.Client{
-                Transport: adaptiveRoundTripper(func(httpRequest *http.Request) (*http.Response, error) {
-                       switch {
-                       case httpRequest.URL.String() == proxy.ModelsURL():
-                               body := `{"data":[{"id":"gpt-5-mini"}]}`
-                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
-                       case strings.HasPrefix(httpRequest.URL.String(), proxy.ModelsURL()+"/"):
-                               return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadataEmpty)), Header: make(http.Header)}, nil
-                       case httpRequest.URL.String() == proxy.ResponsesURL():
-                               buf, _ := io.ReadAll(httpRequest.Body)
-                               httpRequest.Body.Close()
-                               payload := string(buf)
+	testingInstance.Helper()
+	return &http.Client{
+		Transport: adaptiveRoundTripper(func(httpRequest *http.Request) (*http.Response, error) {
+			switch {
+			case httpRequest.URL.String() == proxy.DefaultEndpoints.GetModelsURL():
+				body := `{"data":[{"id":"` + proxy.ModelNameGPT5Mini + `"}]}`
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+			case strings.HasPrefix(httpRequest.URL.String(), proxy.DefaultEndpoints.GetModelsURL()+"/"):
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadataEmpty)), Header: make(http.Header)}, nil
+			case httpRequest.URL.String() == proxy.DefaultEndpoints.GetResponsesURL():
+				buf, _ := io.ReadAll(httpRequest.Body)
+				httpRequest.Body.Close()
+				payload := string(buf)
 				switch mode {
 				case adaptiveModeTemperature:
 					if strings.Contains(payload, `"temperature"`) {
@@ -75,10 +75,10 @@ func newAdaptiveRouter(testingInstance *testing.T, mode string) *gin.Engine {
 	testingInstance.Helper()
 	gin.SetMode(gin.TestMode)
 	proxy.HTTPClient = newAdaptiveClient(testingInstance, mode)
-	proxy.SetModelsURL(mockModelsURL)
-	proxy.SetResponsesURL(mockResponsesURL)
-	testingInstance.Cleanup(proxy.ResetModelsURL)
-	testingInstance.Cleanup(proxy.ResetResponsesURL)
+	proxy.DefaultEndpoints.SetModelsURL(mockModelsURL)
+	proxy.DefaultEndpoints.SetResponsesURL(mockResponsesURL)
+	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetModelsURL() })
+	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
 	logger, _ := zap.NewDevelopment()
 	testingInstance.Cleanup(func() { _ = logger.Sync() })
 	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
@@ -107,7 +107,7 @@ func TestAdaptiveRemovesUnsupportedParameters(testingInstance *testing.T) {
 			mode:     adaptiveModeTemperature,
 			expected: adaptiveOKNoTemp,
 			query: map[string]string{
-				adaptiveModelQueryParameter: "gpt-5-mini",
+				adaptiveModelQueryParameter: proxy.ModelNameGPT5Mini,
 			},
 		},
 		{
@@ -115,7 +115,7 @@ func TestAdaptiveRemovesUnsupportedParameters(testingInstance *testing.T) {
 			mode:     adaptiveModeTools,
 			expected: adaptiveOKNoTools,
 			query: map[string]string{
-				adaptiveModelQueryParameter: "gpt-5-mini",
+				adaptiveModelQueryParameter: proxy.ModelNameGPT5Mini,
 				webSearchQueryParameter:     "1",
 			},
 		},

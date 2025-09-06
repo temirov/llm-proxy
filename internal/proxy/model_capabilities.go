@@ -1,148 +1,154 @@
 package proxy
 
 import (
-        "encoding/json"
-        "fmt"
-        "io"
-        "net/http"
-        "strings"
-        "sync"
+	"strings"
 )
 
 const (
-        // apiFlavorResponses identifies the responses API flavor.
-        apiFlavorResponses = "responses"
-        // modelPrefixGPT4oMini is the prefix for GPT-4o-mini models.
-        modelPrefixGPT4oMini = "gpt-4o-mini"
-        // modelPrefixGPT4o is the prefix for GPT-4o models.
-        modelPrefixGPT4o = "gpt-4o"
-        // modelPrefixGPT41 is the prefix for GPT-4.1 models.
-        modelPrefixGPT41 = "gpt-4.1"
-        // modelPrefixGPT5Mini is the prefix for GPT-5-mini models.
-        modelPrefixGPT5Mini = "gpt-5-mini"
-        // modelPrefixGPT5 is the prefix for GPT-5 models.
-        modelPrefixGPT5 = "gpt-5"
-        // modelNameSeparator divides model prefix and variant.
-        modelNameSeparator = "-"
+	// defaultTemperature specifies the sampling temperature for supported models.
+	defaultTemperature = 0.7
 )
 
-// ModelCapabilities describes the features supported by a model.
-type ModelCapabilities struct {
-        apiFlavor            string
-        allowedRequestFields map[string]struct{}
+// --- Request Payload Structs ---
+// These structs are mapped directly to the capabilities of known models.
+
+// Reasoning specifies configuration options for reasoning-capable models.
+// Effort indicates the desired reasoning intensity and uses constants such as
+// reasoningEffortMinimal or reasoningEffortMedium.
+type Reasoning struct {
+	Effort string `json:"effort"`
 }
 
-// SupportsField reports whether the capability set permits the specified request field.
-func (capabilities ModelCapabilities) SupportsField(fieldName string) bool {
-        _, allowed := capabilities.allowedRequestFields[fieldName]
-        return allowed
+// requestPayloadBase contains fields common to all requests.
+type requestPayloadBase struct {
+	Model           string `json:"model"`
+	Input           string `json:"input"`
+	MaxOutputTokens int    `json:"max_output_tokens"`
 }
 
-// SupportsWebSearch reports whether the model allows web search.
-func (capabilities ModelCapabilities) SupportsWebSearch() bool {
-        return capabilities.SupportsField(keyTools)
+// requestPayloadWithTools is for models supporting tools but not temperature (e.g., gpt-5).
+type requestPayloadWithTools struct {
+	requestPayloadBase
+	Tools      []Tool     `json:"tools,omitempty"`
+	ToolChoice string     `json:"tool_choice,omitempty"`
+	Reasoning  *Reasoning `json:"reasoning,omitempty"`
 }
 
-// SupportsTemperature reports whether the model allows setting temperature.
-func (capabilities ModelCapabilities) SupportsTemperature() bool {
-        return capabilities.SupportsField(keyTemperature)
+// requestPayloadWithTemperature is for models supporting temperature but not tools (e.g., gpt-4o-mini).
+type requestPayloadWithTemperature struct {
+	requestPayloadBase
+	Temperature *float64 `json:"temperature,omitempty"`
 }
 
-// capabilityCache holds capabilities retrieved from the upstream service.
+// requestPayloadFull is for models supporting both temperature and tools (e.g., gpt-4o, gpt-4.1).
+type requestPayloadFull struct {
+	requestPayloadBase
+	Temperature *float64 `json:"temperature,omitempty"`
+	Tools       []Tool   `json:"tools,omitempty"`
+	ToolChoice  string   `json:"tool_choice,omitempty"`
+}
+
+// Tool represents a tool available to the model.
+type Tool struct {
+	Type string `json:"type"`
+}
+
+// BuildRequestPayload selects the correct struct for the given model and returns it.
+func BuildRequestPayload(modelIdentifier string, combinedPrompt string, webSearchEnabled bool) any {
+	base := requestPayloadBase{
+		Model:           modelIdentifier,
+		Input:           combinedPrompt,
+		MaxOutputTokens: maxOutputTokens,
+	}
+
+	// Declaratively choose the payload structure based on the model.
+	switch modelIdentifier {
+	case ModelNameGPT4o, ModelNameGPT41:
+		payload := requestPayloadFull{requestPayloadBase: base}
+		temperature := defaultTemperature
+		payload.Temperature = &temperature
+		if webSearchEnabled {
+			payload.Tools = []Tool{{Type: toolTypeWebSearch}}
+			payload.ToolChoice = keyAuto
+		}
+		return payload
+	case ModelNameGPT5:
+		payload := requestPayloadWithTools{requestPayloadBase: base}
+		if webSearchEnabled {
+			payload.Tools = []Tool{{Type: toolTypeWebSearch}}
+			payload.ToolChoice = keyAuto
+			payload.Reasoning = &Reasoning{Effort: reasoningEffortMedium}
+		}
+		return payload
+	case ModelNameGPT4oMini:
+		payload := requestPayloadWithTemperature{requestPayloadBase: base}
+		temperature := defaultTemperature
+		payload.Temperature = &temperature
+		return payload
+	case ModelNameGPT5Mini:
+		// This model has no optional parameters, so we use the base struct directly.
+		return base
+	default:
+		// Fallback for any unknown models, assuming full capabilities as a sensible default.
+		payload := requestPayloadFull{requestPayloadBase: base}
+		temperature := defaultTemperature
+		payload.Temperature = &temperature
+		if webSearchEnabled {
+			payload.Tools = []Tool{{Type: toolTypeWebSearch}}
+			payload.ToolChoice = keyAuto
+		}
+		return payload
+	}
+}
+
+// --- Original file content below ---
+
+// ModelPayloadSchema lists request fields allowed by a model.
+type ModelPayloadSchema struct {
+	// AllowedRequestFields enumerates JSON fields permitted in the request payload.
+	AllowedRequestFields []string
+}
+
+const (
+	// ModelNameGPT4oMini identifies the GPT-4o-mini model.
+	ModelNameGPT4oMini = "gpt-4o-mini"
+	// ModelNameGPT4o identifies the GPT-4o model.
+	ModelNameGPT4o = "gpt-4o"
+	// ModelNameGPT41 identifies the GPT-4.1 model.
+	ModelNameGPT41 = "gpt-4.1"
+	// ModelNameGPT5Mini identifies the GPT-5-mini model.
+	ModelNameGPT5Mini = "gpt-5-mini"
+	// ModelNameGPT5 identifies the GPT-5 model which does not accept the temperature field.
+	ModelNameGPT5 = "gpt-5"
+)
+
 var (
-        capabilityCache      = make(map[string]ModelCapabilities)
-        capabilityCacheMutex sync.RWMutex
+	// SchemaGPT4oMini defines allowed payload fields for the GPT-4o-mini model.
+	SchemaGPT4oMini = ModelPayloadSchema{AllowedRequestFields: []string{keyModel, keyInput, keyMaxOutputTokens, keyTemperature}}
+	// SchemaGPT4o defines allowed payload fields for the GPT-4o model.
+	SchemaGPT4o = ModelPayloadSchema{AllowedRequestFields: []string{keyModel, keyInput, keyMaxOutputTokens, keyTemperature, keyTools, keyToolChoice}}
+	// SchemaGPT41 defines allowed payload fields for the GPT-4.1 model.
+	SchemaGPT41 = ModelPayloadSchema{AllowedRequestFields: []string{keyModel, keyInput, keyMaxOutputTokens, keyTemperature, keyTools, keyToolChoice}}
+	// SchemaGPT5Mini defines allowed payload fields for the GPT-5-mini model.
+	SchemaGPT5Mini = ModelPayloadSchema{AllowedRequestFields: []string{keyModel, keyInput, keyMaxOutputTokens}}
+	// SchemaGPT5 defines allowed payload fields for the GPT-5 model.
+	SchemaGPT5 = ModelPayloadSchema{AllowedRequestFields: []string{keyModel, keyInput, keyMaxOutputTokens, keyTools, keyToolChoice, keyReasoning}}
 )
 
-// setCapabilityCache replaces the capability cache with the provided map.
-func setCapabilityCache(newCache map[string]ModelCapabilities) {
-        capabilityCacheMutex.Lock()
-        capabilityCache = newCache
-        capabilityCacheMutex.Unlock()
+// modelPayloadSchemas associates model identifiers with their payload schemas.
+var modelPayloadSchemas = map[string]ModelPayloadSchema{
+	ModelNameGPT4oMini: SchemaGPT4oMini,
+	ModelNameGPT4o:     SchemaGPT4o,
+	ModelNameGPT41:     SchemaGPT41,
+	ModelNameGPT5Mini:  SchemaGPT5Mini,
+	ModelNameGPT5:      SchemaGPT5,
 }
 
-// cachedCapabilities retrieves capabilities for the supplied model identifier.
-func cachedCapabilities(modelIdentifier string) (ModelCapabilities, bool) {
-        capabilityCacheMutex.RLock()
-        capabilities, found := capabilityCache[modelIdentifier]
-        capabilityCacheMutex.RUnlock()
-        return capabilities, found
+// ResolveModelPayloadSchema returns the schema for a model or an empty schema when unknown.
+func ResolveModelPayloadSchema(modelIdentifier string) ModelPayloadSchema {
+	normalized := strings.ToLower(strings.TrimSpace(modelIdentifier))
+	if schema, found := modelPayloadSchemas[normalized]; found {
+		return schema
+	}
+	return ModelPayloadSchema{}
 }
-
-// fetchModelCapabilities retrieves the capability description for a model from the upstream service.
-func fetchModelCapabilities(modelIdentifier string, openAIKey string) (ModelCapabilities, error) {
-        resourceURL := ModelsURL() + "/" + modelIdentifier
-        httpRequest, requestError := http.NewRequest(http.MethodGet, resourceURL, nil)
-        if requestError != nil {
-                return ModelCapabilities{}, requestError
-        }
-        httpRequest.Header.Set(headerAuthorization, headerAuthorizationPrefix+openAIKey)
-
-        httpResponse, httpError := HTTPClient.Do(httpRequest)
-        if httpError != nil {
-                return ModelCapabilities{}, httpError
-        }
-        defer httpResponse.Body.Close()
-
-        if httpResponse.StatusCode != http.StatusOK {
-                bodyBytes, _ := io.ReadAll(httpResponse.Body)
-                return ModelCapabilities{}, fmt.Errorf("status=%d body=%s", httpResponse.StatusCode, string(bodyBytes))
-        }
-
-        var payload map[string]any
-        if decodeError := json.NewDecoder(httpResponse.Body).Decode(&payload); decodeError != nil {
-                return ModelCapabilities{}, decodeError
-        }
-
-        rawFields, _ := payload[jsonFieldAllowedRequestFields].([]any)
-        allowed := make(map[string]struct{}, len(rawFields))
-        for _, field := range rawFields {
-                if fieldName, ok := field.(string); ok {
-                        allowed[fieldName] = struct{}{}
-                }
-        }
-        return ModelCapabilities{apiFlavor: apiFlavorResponses, allowedRequestFields: allowed}, nil
-}
-
-// capabilitiesByPrefix defines known capabilities for recognized model prefixes.
-var capabilitiesByPrefix = map[string]ModelCapabilities{
-        modelPrefixGPT4oMini: {apiFlavor: apiFlavorResponses, allowedRequestFields: map[string]struct{}{keyTemperature: {}}},
-        modelPrefixGPT4o:     {apiFlavor: apiFlavorResponses, allowedRequestFields: map[string]struct{}{keyTemperature: {}, keyTools: {}}},
-        modelPrefixGPT41:     {apiFlavor: apiFlavorResponses, allowedRequestFields: map[string]struct{}{keyTemperature: {}, keyTools: {}}},
-        modelPrefixGPT5Mini:  {apiFlavor: apiFlavorResponses, allowedRequestFields: map[string]struct{}{}},
-        modelPrefixGPT5:      {apiFlavor: apiFlavorResponses, allowedRequestFields: map[string]struct{}{keyTemperature: {}, keyTools: {}}},
-}
-
-// lookupModelCapabilities finds capabilities for the given model identifier.
-func lookupModelCapabilities(modelIdentifier string) (ModelCapabilities, bool) {
-        for {
-                if capabilities, found := capabilitiesByPrefix[modelIdentifier]; found {
-                        return capabilities, true
-                }
-                lastSeparatorIndex := strings.LastIndex(modelIdentifier, modelNameSeparator)
-                if lastSeparatorIndex == -1 {
-                        break
-                }
-                modelIdentifier = modelIdentifier[:lastSeparatorIndex]
-        }
-        return ModelCapabilities{}, false
-}
-
-// mustRejectWebSearchAtIngress lists models for which web search requests should fail fast.
-func mustRejectWebSearchAtIngress(modelIdentifier string) bool {
-        normalizedModelID := strings.ToLower(strings.TrimSpace(modelIdentifier))
-        return strings.HasPrefix(normalizedModelID, modelPrefixGPT4oMini)
-}
-
-// ResolveModelSpecification returns capabilities using the capability cache or static table.
-func ResolveModelSpecification(modelIdentifier string) ModelCapabilities {
-        lower := strings.ToLower(strings.TrimSpace(modelIdentifier))
-        if cached, found := cachedCapabilities(lower); found {
-                return cached
-        }
-        if capabilities, found := lookupModelCapabilities(lower); found {
-                return capabilities
-        }
-        return ModelCapabilities{apiFlavor: apiFlavorResponses, allowedRequestFields: map[string]struct{}{}}
-}
-

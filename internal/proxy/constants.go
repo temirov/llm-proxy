@@ -12,6 +12,9 @@ const (
 	headerAccept              = "Accept"
 	headerAuthorizationPrefix = "Bearer "
 
+	// rootPath defines the HTTP path for the root endpoint.
+	rootPath = "/"
+
 	queryParameterPrompt       = "prompt"
 	queryParameterKey          = "key"
 	queryParameterModel        = "model"
@@ -31,41 +34,73 @@ const (
 	// errorMissingClientKey indicates that the key query parameter is missing.
 	errorMissingClientKey   = "unknown client key"
 	errorRequestTimedOut    = "request timed out"
-	errorRequestBuild       = "request build error"
 	errorOpenAIRequest      = "OpenAI request error"
 	errorOpenAIAPI          = "OpenAI API error"
 	errorOpenAIAPINoText    = "OpenAI API error (no text)"
 	errorOpenAIFailedStatus = "OpenAI API error (failed status)"
+	errorOpenAIContinue     = "OpenAI API continue error"
 	// errorUpstreamIncomplete indicates that the upstream provider returned an incomplete response.
 	errorUpstreamIncomplete    = "OpenAI API error (incomplete response)"
 	errorOpenAIModelValidation = "OpenAI model validation error"
 	// errorUnknownModel indicates that a model identifier is not recognized.
-	errorUnknownModel                = "unknown model"
-	errorWebSearchUnsupportedByModel = "web_search is not supported by the selected model"
-	errorResponseFormat              = "response formatting error"
+	errorUnknownModel   = "unknown model"
+	errorResponseFormat = "response formatting error"
 	// errorQueueFull indicates that the internal request queue cannot accept additional tasks.
 	errorQueueFull = "request queue full"
 
 	toolTypeWebSearch = "web_search"
+	// reasoningEffortMedium denotes a medium reasoning effort level.
+	reasoningEffortMedium = "medium"
+	// reasoningEffortMinimal denotes a minimal reasoning effort level.
+	reasoningEffortMinimal = "minimal"
 
-	keyRole            = "role"
-	keyUser            = "user"
-	keySystem          = "system"
-	keyContent         = "content"
-	keyModel           = "model"
-	keyInput           = "input"
-	keyTemperature     = "temperature"
-	keyMaxOutputTokens = "max_output_tokens"
-	keyTools           = "tools"
-	keyType            = "type"
-	keyToolChoice      = "tool_choice"
-	keyAuto            = "auto"
+	// responseTypeMessage identifies a message output item in the upstream response.
+	responseTypeMessage = "message"
 
-        jsonFieldID         = "id"
-        jsonFieldStatus     = "status"
-        jsonFieldOutputText = "output_text"
-        jsonFieldResponse   = "response"
-        jsonFieldAllowedRequestFields = "allowed_request_fields"
+	// responseRoleAssistant identifies the assistant role in output items.
+	responseRoleAssistant = "assistant"
+
+	// responseTypeWebSearchCall identifies a web search tool call in the output array.
+	responseTypeWebSearchCall = "web_search_call"
+
+	// outputPartType identifies an output_text part in a content array.
+	outputPartType = "output_text"
+
+	// textPartType identifies a plain text part in a content array.
+	textPartType = "text"
+
+	// fallbackFinalAnswerFormat formats a message when the model does not provide a final answer.
+	fallbackFinalAnswerFormat = "Model did not provide a final answer. Last web search: \"%s\""
+
+	keyRole = "role"
+	keyUser = "user"
+
+	keySystem             = "system"
+	keyAssistant          = "assistant"
+	keyContent            = "content"
+	keyModel              = "model"
+	keyInput              = "input"
+	keyTemperature        = "temperature"
+	keyMaxOutputTokens    = "max_output_tokens"
+	keyTools              = "tools"
+	keyType               = "type"
+	keyToolChoice         = "tool_choice"
+	keyReasoning          = "reasoning"
+	keyAuto               = "auto"
+	keyPreviousResponseID = "previous_response_id"
+	keyEffort             = "effort"
+	keyText               = "text"
+	keyFormat             = "format"
+	keyVerbosity          = "verbosity"
+	toolChoiceNone        = "none"
+	textFormatType        = "text"
+	verbosityLow          = "low"
+
+	jsonFieldID                   = "id"
+	jsonFieldStatus               = "status"
+	jsonFieldOutputText           = "output_text"
+	jsonFieldResponse             = "response"
+	jsonFieldAllowedRequestFields = "allowed_request_fields"
 
 	statusCompleted = "completed"
 	statusSucceeded = "succeeded"
@@ -84,7 +119,6 @@ const (
 	logFieldClientIP     = "client_ip"
 	logFieldStatus       = "status"
 	logFieldValue        = "value"
-	logFieldError        = "error"
 	// logFieldParameter identifies the request parameter related to a log entry.
 	logFieldParameter = "parameter"
 	// logFieldID identifies the response identifier logged for traceability.
@@ -93,13 +127,19 @@ const (
 	// logFieldExpectedFingerprint identifies the fingerprint of the expected client key.
 	logFieldExpectedFingerprint = "expected_fingerprint"
 
-	logEventOpenAIRequestError    = "OpenAI request error"
-	logEventOpenAIResponse        = "OpenAI API response"
-        logEventOpenAIModelsList      = "OpenAI models list"
-        logEventOpenAIModelsListError = "OpenAI models list error"
-        logEventOpenAIModelCapabilitiesError = "OpenAI model capabilities error"
-        logEventOpenAIPollError       = "OpenAI poll error"
-	// logEventParseOpenAIResponseFailed indicates that parsing the OpenAI response failed.
+	logEventOpenAIRequestError           = "OpenAI request error"
+	logEventOpenAIResponse               = "OpenAI API response"
+	logEventOpenAIModelsList             = "OpenAI models list"
+	logEventOpenAIModelsListError        = "OpenAI models list error"
+	logEventOpenAIModelCapabilitiesError = "OpenAI model capabilities error"
+	logEventOpenAIPollError              = "OpenAI poll error"
+	logEventOpenAIContinueError          = "OpenAI continue error"
+	// logEventOpenAIInitialResponseBody records the body of the initial response from OpenAI.
+	logEventOpenAIInitialResponseBody = "OpenAI initial response body"
+	// logEventMissingFinalMessage indicates that the response completed without a final assistant message.
+	logEventMissingFinalMessage = "response is 'completed' but lacks final message; starting synthesis continuation"
+	// logEventRetryingSynthesis reports a retry of synthesis due to an empty initial attempt.
+	logEventRetryingSynthesis             = "first synthesis continuation yielded no text; retrying once with stricter settings"
 	logEventParseOpenAIResponseFailed     = "parse OpenAI response failed"
 	logEventForbiddenRequest              = "forbidden request"
 	logEventRequestReceived               = "request received"
