@@ -26,11 +26,11 @@ func makeTimeoutHTTPClient(testingInstance *testing.T) *http.Client {
 	return &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 			switch {
-			case request.URL.String() == proxy.ModelsURL():
+			case request.URL.String() == proxy.DefaultEndpoints.GetModelsURL():
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(modelsListBody)), Header: make(http.Header)}, nil
-			case strings.HasPrefix(request.URL.String(), proxy.ModelsURL()+"/"):
+			case strings.HasPrefix(request.URL.String(), proxy.DefaultEndpoints.GetModelsURL()+"/"):
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadataTemperatureTools)), Header: make(http.Header)}, nil
-			case request.URL.String() == proxy.ResponsesURL():
+			case request.URL.String() == proxy.DefaultEndpoints.GetResponsesURL():
 				select {
 				case <-request.Context().Done():
 					return nil, request.Context().Err()

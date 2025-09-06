@@ -48,8 +48,8 @@ func NewSessionMockServer(finalResponseJSON string) *httptest.Server {
 // NewTestRouter creates a pre-configured router for integration tests.
 func NewTestRouter(t *testing.T, serverURL string) *gin.Engine {
 	t.Helper()
-	proxy.SetResponsesURL(serverURL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	proxy.DefaultEndpoints.SetResponsesURL(serverURL)
+	t.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
 
 	logger, _ := zap.NewDevelopment()
 	t.Cleanup(func() { _ = logger.Sync() })

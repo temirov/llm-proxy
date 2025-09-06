@@ -36,8 +36,8 @@ func withStubbedProxy(t *testing.T, initialResponse, finalResponse string) http.
 	}))
 	t.Cleanup(server.Close)
 
-	proxy.SetResponsesURL(server.URL)
-	t.Cleanup(proxy.ResetResponsesURL)
+	proxy.DefaultEndpoints.SetResponsesURL(server.URL)
+	t.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
 
 	logger, _ := zap.NewDevelopment()
 	t.Cleanup(func() { _ = logger.Sync() })

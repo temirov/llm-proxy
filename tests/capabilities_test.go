@@ -38,9 +38,9 @@ func TestIntegration_TemperatureNotAllowed_OmitsParameter(testingInstance *testi
 	}))
 	defer openAIServer.Close()
 
-	proxy.SetResponsesURL(openAIServer.URL + "/v1/responses")
+	proxy.DefaultEndpoints.SetResponsesURL(openAIServer.URL + "/v1/responses")
 	proxy.HTTPClient = openAIServer.Client()
-	testingInstance.Cleanup(proxy.ResetResponsesURL)
+	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
 
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
@@ -96,9 +96,9 @@ func TestIntegration_ToolsNotAllowed_OmitsParameters(testingInstance *testing.T)
 	}))
 	defer openAIServer.Close()
 
-	proxy.SetResponsesURL(openAIServer.URL + "/v1/responses")
+	proxy.DefaultEndpoints.SetResponsesURL(openAIServer.URL + "/v1/responses")
 	proxy.HTTPClient = openAIServer.Client()
-	testingInstance.Cleanup(proxy.ResetResponsesURL)
+	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
 
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()

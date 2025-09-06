@@ -27,11 +27,11 @@ func makeSlowHTTPClient(testingInstance *testing.T) *http.Client {
 	return &http.Client{
 		Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
 			switch {
-			case httpRequest.URL.String() == proxy.ModelsURL():
+			case httpRequest.URL.String() == proxy.DefaultEndpoints.GetModelsURL():
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(modelsListBody)), Header: make(http.Header)}, nil
-			case strings.HasPrefix(httpRequest.URL.String(), proxy.ModelsURL()+"/"):
+			case strings.HasPrefix(httpRequest.URL.String(), proxy.DefaultEndpoints.GetModelsURL()+"/"):
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadataTemperatureTools)), Header: make(http.Header)}, nil
-			case httpRequest.URL.String() == proxy.ResponsesURL():
+			case httpRequest.URL.String() == proxy.DefaultEndpoints.GetResponsesURL():
 				time.Sleep(responseDelay)
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"output_text":"` + expectedResponseBody + `"}`)), Header: make(http.Header)}, nil
 			default:
