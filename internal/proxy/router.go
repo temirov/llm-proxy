@@ -56,10 +56,11 @@ func BuildRouter(configuration Configuration, structuredLogger *zap.SugaredLogge
 	}
 
 	taskQueue := make(chan requestTask, configuration.QueueSize)
+	openAIClient := NewOpenAIClient(HTTPClient, DefaultEndpoints, maxOutputTokens, UpstreamPollTimeout())
 	for workerIndex := 0; workerIndex < configuration.WorkerCount; workerIndex++ {
 		go func() {
 			for pending := range taskQueue {
-				text, requestError := openAIRequest(
+				text, requestError := openAIClient.openAIRequest(
 					configuration.OpenAIKey,
 					pending.model,
 					pending.prompt,

@@ -29,6 +29,26 @@ var (
 	upstreamPollTimeout time.Duration
 )
 
+// OpenAIClient provides access to the OpenAI responses API with configurable
+// endpoints and tunable parameters.
+type OpenAIClient struct {
+	httpClient          HTTPDoer
+	endpoints           *Endpoints
+	maxOutputTokens     int
+	upstreamPollTimeout time.Duration
+}
+
+// NewOpenAIClient constructs an OpenAIClient initialized with the supplied
+// components.
+func NewOpenAIClient(httpClient HTTPDoer, endpoints *Endpoints, maxTokens int, pollTimeout time.Duration) *OpenAIClient {
+	return &OpenAIClient{
+		httpClient:          httpClient,
+		endpoints:           endpoints,
+		maxOutputTokens:     maxTokens,
+		upstreamPollTimeout: pollTimeout,
+	}
+}
+
 const (
 	synthesisInstructionPrimary = "Now synthesize the final answer with concise citations."
 	synthesisInstructionRetry   = "Produce the final answer now as plain text with concise citations. Do not call tools. Do not include hidden reasoning."
@@ -68,7 +88,7 @@ func hasFinalMessage(rawPayload []byte) bool {
 }
 
 // openAIRequest sends a prompt to the OpenAI responses API and returns the resulting text.
-func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, systemPrompt string, webSearchEnabled bool, structuredLogger *zap.SugaredLogger) (string, error) {
+func (client *OpenAIClient) openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, systemPrompt string, webSearchEnabled bool, structuredLogger *zap.SugaredLogger) (string, error) {
 	// The Responses API expects a single string input. We'll prepend the system prompt to the user prompt.
 	var combinedPrompt strings.Builder
 	if !utils.IsBlank(systemPrompt) {
@@ -86,13 +106,13 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 
 	requestContext, cancelRequest := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancelRequest()
-	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, DefaultEndpoints.GetResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
+	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, client.endpoints.GetResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
 	if buildError != nil {
 		structuredLogger.Errorw(logEventBuildHTTPRequest, constants.LogFieldError, buildError)
 		return constants.EmptyString, buildError
 	}
 
-	statusCode, responseBytes, latencyMillis, requestError := performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIRequestError)
+	statusCode, responseBytes, latencyMillis, requestError := client.performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIRequestError)
 	if requestError != nil {
 		if errors.Is(requestError, context.DeadlineExceeded) {
 			return constants.EmptyString, requestError
@@ -149,7 +169,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		targetResponseID := responseIdentifier
 
 		if forcedSynthesis {
-			newID, synthErr := startSynthesisContinuation(openAIKey, responseIdentifier, modelIdentifier, structuredLogger /*retryOrdinal=*/, 0)
+			newID, synthErr := client.startSynthesisContinuation(openAIKey, responseIdentifier, modelIdentifier, structuredLogger /*retryOrdinal=*/, 0)
 			if synthErr != nil {
 				structuredLogger.Errorw(
 					logEventOpenAIContinueError,
@@ -160,7 +180,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 			}
 			targetResponseID = newID
 		} else {
-			if continueError := continueResponse(openAIKey, responseIdentifier, structuredLogger); continueError != nil {
+			if continueError := client.continueResponse(openAIKey, responseIdentifier, structuredLogger); continueError != nil {
 				structuredLogger.Errorw(
 					logEventOpenAIContinueError,
 					logFieldID, responseIdentifier,
@@ -170,7 +190,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 			}
 		}
 
-		finalText, pollError := pollResponseUntilDone(openAIKey, targetResponseID, structuredLogger)
+		finalText, pollError := client.pollResponseUntilDone(openAIKey, targetResponseID, structuredLogger)
 		if pollError != nil {
 			structuredLogger.Errorw(
 				logEventOpenAIPollError,
@@ -186,7 +206,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		// --- Fallback: one more synthesis continuation if still no text ---
 		if forcedSynthesis {
 			structuredLogger.Debugw(logEventRetryingSynthesis)
-			newID, synthErr := startSynthesisContinuation(openAIKey, targetResponseID, modelIdentifier, structuredLogger /*retryOrdinal=*/, 1)
+			newID, synthErr := client.startSynthesisContinuation(openAIKey, targetResponseID, modelIdentifier, structuredLogger /*retryOrdinal=*/, 1)
 			if synthErr != nil {
 				structuredLogger.Errorw(
 					logEventOpenAIContinueError,
@@ -197,7 +217,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 			}
 			targetResponseID = newID
 
-			finalText2, pollError2 := pollResponseUntilDone(openAIKey, targetResponseID, structuredLogger)
+			finalText2, pollError2 := client.pollResponseUntilDone(openAIKey, targetResponseID, structuredLogger)
 			if pollError2 != nil {
 				structuredLogger.Errorw(
 					logEventOpenAIPollError,
@@ -222,8 +242,8 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 }
 
 // continueResponse signals to the API that a response session should proceed (legacy non-terminal case).
-func continueResponse(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) error {
-	resourceURL := DefaultEndpoints.GetResponsesURL() + "/" + responseIdentifier + "/continue"
+func (client *OpenAIClient) continueResponse(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) error {
+	resourceURL := client.endpoints.GetResponsesURL() + "/" + responseIdentifier + "/continue"
 	requestContext, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 
@@ -232,7 +252,7 @@ func continueResponse(openAIKey string, responseIdentifier string, structuredLog
 		return buildError
 	}
 
-	statusCode, responseBytes, _, requestError := performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIContinueError)
+	statusCode, responseBytes, _, requestError := client.performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIContinueError)
 	if requestError != nil {
 		return requestError
 	}
@@ -256,8 +276,8 @@ func continueResponse(openAIKey string, responseIdentifier string, structuredLog
 // It returns the identifier of the new response.
 //
 // retryOrdinal==0 : first synthesis pass; retryOrdinal==1 : stricter retry
-func startSynthesisContinuation(openAIKey string, previousResponseID string, modelIdentifier string, structuredLogger *zap.SugaredLogger, retryOrdinal int) (string, error) {
-	outputTokenLimit := maxOutputTokens
+func (client *OpenAIClient) startSynthesisContinuation(openAIKey string, previousResponseID string, modelIdentifier string, structuredLogger *zap.SugaredLogger, retryOrdinal int) (string, error) {
+	outputTokenLimit := client.maxOutputTokens
 	if outputTokenLimit < 1536 {
 		outputTokenLimit = 1536
 	}
@@ -290,12 +310,12 @@ func startSynthesisContinuation(openAIKey string, previousResponseID string, mod
 
 	requestContext, cancelRequest := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancelRequest()
-	request, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, DefaultEndpoints.GetResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
+	request, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, client.endpoints.GetResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
 	if buildError != nil {
 		return constants.EmptyString, buildError
 	}
 
-	statusCode, responseBytes, _, requestError := performResponsesRequest(request, structuredLogger, logEventOpenAIRequestError)
+	statusCode, responseBytes, _, requestError := client.performResponsesRequest(request, structuredLogger, logEventOpenAIRequestError)
 	if requestError != nil {
 		return constants.EmptyString, requestError
 	}
@@ -315,13 +335,13 @@ func startSynthesisContinuation(openAIKey string, previousResponseID string, mod
 }
 
 // pollResponseUntilDone repeatedly fetches a response until it is complete or the poll timeout elapses.
-func pollResponseUntilDone(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, error) {
-	deadlineInstant := time.Now().Add(upstreamPollTimeout)
+func (client *OpenAIClient) pollResponseUntilDone(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, error) {
+	deadlineInstant := time.Now().Add(client.upstreamPollTimeout)
 	for {
 		if time.Now().After(deadlineInstant) {
 			return constants.EmptyString, ErrUpstreamIncomplete
 		}
-		textCandidate, responseComplete, fetchError := fetchResponseByID(deadlineInstant, openAIKey, responseIdentifier, structuredLogger)
+		textCandidate, responseComplete, fetchError := client.fetchResponseByID(deadlineInstant, openAIKey, responseIdentifier, structuredLogger)
 		if fetchError != nil {
 			return constants.EmptyString, fetchError
 		}
@@ -336,8 +356,8 @@ func pollResponseUntilDone(openAIKey string, responseIdentifier string, structur
 }
 
 // fetchResponseByID retrieves a response by identifier and reports whether the response is complete.
-func fetchResponseByID(deadline time.Time, openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, bool, error) {
-	resourceURL := DefaultEndpoints.GetResponsesURL() + "/" + responseIdentifier
+func (client *OpenAIClient) fetchResponseByID(deadline time.Time, openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, bool, error) {
+	resourceURL := client.endpoints.GetResponsesURL() + "/" + responseIdentifier
 	requestContext, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 
@@ -346,7 +366,7 @@ func fetchResponseByID(deadline time.Time, openAIKey string, responseIdentifier 
 		return constants.EmptyString, false, buildError
 	}
 
-	_, responseBytes, _, requestError := performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIPollError)
+	_, responseBytes, _, requestError := client.performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIPollError)
 	if requestError != nil {
 		return constants.EmptyString, false, requestError
 	}
@@ -464,13 +484,13 @@ func extractTextFromAny(rawPayload []byte) string {
 }
 
 // --- HTTP and Helper Functions ---
-func performResponsesRequest(httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEvent string) (int, []byte, int64, error) {
+func (client *OpenAIClient) performResponsesRequest(httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEvent string) (int, []byte, int64, error) {
 	var statusCode int
 	var responseBytes []byte
 	var latencyMillis int64
 	operation := func() error {
 		var transportError error
-		statusCode, responseBytes, latencyMillis, transportError = utils.PerformHTTPRequest(HTTPClient.Do, httpRequest, structuredLogger, logEvent)
+		statusCode, responseBytes, latencyMillis, transportError = utils.PerformHTTPRequest(client.httpClient.Do, httpRequest, structuredLogger, logEvent)
 		if transportError != nil {
 			return transportError
 		}
