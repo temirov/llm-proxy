@@ -87,7 +87,6 @@ const (
 	logFieldClientIP     = "client_ip"
 	logFieldStatus       = "status"
 	logFieldValue        = "value"
-	logFieldError        = "error"
 	// logFieldParameter identifies the request parameter related to a log entry.
 	logFieldParameter = "parameter"
 	// logFieldID identifies the response identifier logged for traceability.
