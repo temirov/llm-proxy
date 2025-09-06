@@ -21,26 +21,26 @@ const (
 // NewSessionMockServer creates a reusable httptest.Server that correctly
 // simulates the multi-step session flow for the Responses API.
 func NewSessionMockServer(finalResponseJSON string) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 		// 1. Handle the initial POST to create the session.
-		if r.Method == http.MethodPost && r.URL.Path == "/" {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(fmt.Sprintf(`{"id": "%s", "status": "queued"}`, TestJobID)))
+		if httpRequest.Method == http.MethodPost && httpRequest.URL.Path == "/" {
+			responseWriter.Header().Set("Content-Type", "application/json")
+			_, _ = responseWriter.Write([]byte(fmt.Sprintf(`{"id": "%s", "status": "queued"}`, TestJobID)))
 			return
 		}
 		// 2. Handle the subsequent GET to poll the session.
-		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, TestJobID) {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(finalResponseJSON))
+		if httpRequest.Method == http.MethodGet && strings.HasSuffix(httpRequest.URL.Path, TestJobID) {
+			responseWriter.Header().Set("Content-Type", "application/json")
+			_, _ = responseWriter.Write([]byte(finalResponseJSON))
 			return
 		}
 		// 3. Handle a "continue" POST if a test requires it.
-		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/continue") {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"status": "in_progress"}`)) // Acknowledge the continue request
+		if httpRequest.Method == http.MethodPost && strings.HasSuffix(httpRequest.URL.Path, "/continue") {
+			responseWriter.Header().Set("Content-Type", "application/json")
+			_, _ = responseWriter.Write([]byte(`{"status": "in_progress"}`)) // Acknowledge the continue request
 			return
 		}
-		http.NotFound(w, r)
+		http.NotFound(responseWriter, httpRequest)
 	}))
 }
 

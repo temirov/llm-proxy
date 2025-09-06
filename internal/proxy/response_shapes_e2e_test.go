@@ -24,14 +24,14 @@ func withStubbedProxy(t *testing.T, initialResponse, finalResponse string) http.
 	t.Helper()
 	const jobID = "resp_test_123"
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.Method == http.MethodPost {
+	server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
+		responseWriter.Header().Set("Content-Type", "application/json")
+		if httpRequest.Method == http.MethodPost {
 			// Return the initial response, which might be the job ID or the full response.
-			_, _ = w.Write([]byte(initialResponse))
-		} else if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, jobID) {
+			_, _ = responseWriter.Write([]byte(initialResponse))
+		} else if httpRequest.Method == http.MethodGet && strings.HasSuffix(httpRequest.URL.Path, jobID) {
 			// Return the final response on poll.
-			_, _ = w.Write([]byte(finalResponse))
+			_, _ = responseWriter.Write([]byte(finalResponse))
 		}
 	}))
 	t.Cleanup(server.Close)
