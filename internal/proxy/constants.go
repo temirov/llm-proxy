@@ -52,6 +52,8 @@ const (
 	toolTypeWebSearch = "web_search"
 	// reasoningEffortMedium denotes a medium reasoning effort level.
 	reasoningEffortMedium = "medium"
+	// reasoningEffortMinimal denotes a minimal reasoning effort level.
+	reasoningEffortMinimal = "minimal"
 
 	// responseTypeMessage identifies a message output item in the upstream response.
 	responseTypeMessage = "message"

@@ -100,15 +100,15 @@ func Test_ResponseShapes(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			handler := withStubbedProxy(t, initialPollResponse, tc.finalResponse)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			handler := withStubbedProxy(t, initialPollResponse, testCase.finalResponse)
 			status, body := doRequest(t, handler)
 			if status != http.StatusOK {
 				t.Fatalf("status=%d want=%d body=%s", status, http.StatusOK, body)
 			}
-			if body != tc.wantBody {
-				t.Fatalf("got body %q want %q", body, tc.wantBody)
+			if body != testCase.wantBody {
+				t.Fatalf("got body %q want %q", body, testCase.wantBody)
 			}
 		})
 	}

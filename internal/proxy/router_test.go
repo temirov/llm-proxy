@@ -34,20 +34,20 @@ func TestChatHandlerValidatesModel(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testScenarios {
-		t.Run(tc.scenarioName, func(t *testing.T) {
+	for _, testScenario := range testScenarios {
+		t.Run(testScenario.scenarioName, func(t *testing.T) {
 			mockServer := NewSessionMockServer(finalResponse)
 			defer mockServer.Close()
 			router := NewTestRouter(t, mockServer.URL)
 
-			requestPath := fmt.Sprintf("/?prompt=%s&model=%s&key=%s", TestPrompt, tc.modelIdentifier, TestSecret)
+			requestPath := fmt.Sprintf("/?prompt=%s&model=%s&key=%s", TestPrompt, testScenario.modelIdentifier, TestSecret)
 			request := httptest.NewRequest(http.MethodGet, requestPath, nil)
 			responseRecorder := httptest.NewRecorder()
 
 			router.ServeHTTP(responseRecorder, request)
 
-			if responseRecorder.Code != tc.expectedStatusCode {
-				t.Fatalf("status=%d want=%d", responseRecorder.Code, tc.expectedStatusCode)
+			if responseRecorder.Code != testScenario.expectedStatusCode {
+				t.Fatalf("status=%d want=%d", responseRecorder.Code, testScenario.expectedStatusCode)
 			}
 		})
 	}
