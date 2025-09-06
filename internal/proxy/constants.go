@@ -48,6 +48,18 @@ const (
 
 	toolTypeWebSearch = "web_search"
 
+	// responseTypeMessage identifies a message output item in the upstream response.
+	responseTypeMessage = "message"
+
+	// responseRoleAssistant identifies the assistant role in output items.
+	responseRoleAssistant = "assistant"
+
+	// responseTypeWebSearchCall identifies a web search tool call in the output array.
+	responseTypeWebSearchCall = "web_search_call"
+
+	// fallbackFinalAnswerFormat formats a message when the model does not provide a final answer.
+	fallbackFinalAnswerFormat = "Model did not provide a final answer. Last web search: \"%s\""
+
 	keyRole = "role"
 	keyUser = "user"
 

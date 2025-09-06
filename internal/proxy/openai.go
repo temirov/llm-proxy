@@ -52,7 +52,7 @@ func hasFinalMessage(rawPayload []byte) bool {
 			Type string `json:"type"`
 			Role string `json:"role"`
 		}
-		if json.Unmarshal(rawItem, &header) == nil && header.Type == "message" && header.Role == "assistant" {
+		if json.Unmarshal(rawItem, &header) == nil && header.Type == responseTypeMessage && header.Role == responseRoleAssistant {
 			// Found the message, so this is a truly final response.
 			return true
 		}
@@ -287,24 +287,24 @@ func startSynthesisContinuation(openAIKey string, previousResponseID string, mod
 	defer cancel()
 	req, buildErr := buildAuthorizedJSONRequest(ctx, http.MethodPost, ResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
 	if buildErr != nil {
-		return "", buildErr
+		return constants.EmptyString, buildErr
 	}
 
 	statusCode, respBytes, _, reqErr := performResponsesRequest(req, structuredLogger, logEventOpenAIRequestError)
 	if reqErr != nil {
-		return "", reqErr
+		return constants.EmptyString, reqErr
 	}
 	if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
-		return "", errors.New(errorOpenAIAPI)
+		return constants.EmptyString, errors.New(errorOpenAIAPI)
 	}
 
 	var decoded map[string]any
 	if json.Unmarshal(respBytes, &decoded) != nil {
-		return "", errors.New(errorOpenAIAPI)
+		return constants.EmptyString, errors.New(errorOpenAIAPI)
 	}
 	newID := utils.GetString(decoded, jsonFieldID)
 	if utils.IsBlank(newID) {
-		return "", errors.New(errorOpenAIAPI)
+		return constants.EmptyString, errors.New(errorOpenAIAPI)
 	}
 	return newID, nil
 }
@@ -406,7 +406,7 @@ func extractTextFromAny(rawPayload []byte) string {
 	}
 
 	if json.Unmarshal(rawPayload, &envelope) != nil {
-		return ""
+		return constants.EmptyString
 	}
 
 	// 1. Prioritize `output_text` as the most reliable source.
@@ -421,7 +421,7 @@ func extractTextFromAny(rawPayload []byte) string {
 				Type string `json:"type"`
 				Role string `json:"role"`
 			}
-			if json.Unmarshal(rawItem, &header) == nil && header.Type == "message" && header.Role == "assistant" {
+			if json.Unmarshal(rawItem, &header) == nil && header.Type == responseTypeMessage && header.Role == responseRoleAssistant {
 				var msgItem outputItem
 				if json.Unmarshal(rawItem, &msgItem) == nil {
 					return joinParts(msgItem.Content)
@@ -432,13 +432,13 @@ func extractTextFromAny(rawPayload []byte) string {
 
 	// 3. If no message was found, create a fallback from the last tool call.
 	if len(envelope.Output) > 0 {
-		lastQuery := ""
-		for i := len(envelope.Output) - 1; i >= 0; i-- {
-			rawItem := envelope.Output[i]
+		lastQuery := constants.EmptyString
+		for outputIndex := len(envelope.Output) - 1; outputIndex >= 0; outputIndex-- {
+			rawItem := envelope.Output[outputIndex]
 			var header struct {
 				Type string `json:"type"`
 			}
-			if json.Unmarshal(rawItem, &header) == nil && header.Type == "web_search_call" {
+			if json.Unmarshal(rawItem, &header) == nil && header.Type == responseTypeWebSearchCall {
 				var searchItem struct {
 					Action searchAction `json:"action"`
 				}
@@ -449,11 +449,11 @@ func extractTextFromAny(rawPayload []byte) string {
 			}
 		}
 		if !utils.IsBlank(lastQuery) {
-			return fmt.Sprintf("Model did not provide a final answer. Last web search: \"%s\"", lastQuery)
+			return fmt.Sprintf(fallbackFinalAnswerFormat, lastQuery)
 		}
 	}
 
-	return ""
+	return constants.EmptyString
 }
 
 // --- HTTP and Helper Functions ---
