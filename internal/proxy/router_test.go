@@ -17,8 +17,7 @@ type chatHandlerScenario struct {
 }
 
 // TestChatHandlerValidatesModel verifies model validation and a successful request flow.
-func TestChatHandlerValidatesModel(t *testing.T) {
-	// Corrected to use "text" to match the parser's expectation.
+func TestChatHandlerValidatesModel(testingInstance *testing.T) {
 	const finalResponse = `{"status":"completed", "output":[{"type":"message", "role":"assistant", "content":[{"type":"text","text":"ok"}]}]}`
 
 	testScenarios := []chatHandlerScenario{
@@ -35,10 +34,10 @@ func TestChatHandlerValidatesModel(t *testing.T) {
 	}
 
 	for _, testScenario := range testScenarios {
-		t.Run(testScenario.scenarioName, func(t *testing.T) {
+		testingInstance.Run(testScenario.scenarioName, func(subTestInstance *testing.T) {
 			mockServer := NewSessionMockServer(finalResponse)
 			defer mockServer.Close()
-			router := NewTestRouter(t, mockServer.URL)
+			router := NewTestRouter(subTestInstance, mockServer.URL)
 
 			requestPath := fmt.Sprintf("/?prompt=%s&model=%s&key=%s", TestPrompt, testScenario.modelIdentifier, TestSecret)
 			request := httptest.NewRequest(http.MethodGet, requestPath, nil)
@@ -47,7 +46,7 @@ func TestChatHandlerValidatesModel(t *testing.T) {
 			router.ServeHTTP(responseRecorder, request)
 
 			if responseRecorder.Code != testScenario.expectedStatusCode {
-				t.Fatalf("status=%d want=%d", responseRecorder.Code, testScenario.expectedStatusCode)
+				subTestInstance.Fatalf("status=%d want=%d", responseRecorder.Code, testScenario.expectedStatusCode)
 			}
 		})
 	}
