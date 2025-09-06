@@ -101,7 +101,7 @@ func TestIntegrationGPT5TemperatureSuppression(testingInstance *testing.T) {
 		testingInstance.Fatalf(temperatureOmittedFormat, proxy.ModelNameGPT5, payload["temperature"])
 	}
 	if _, ok := payload["tools"]; !ok {
-		testingInstance.Fatalf(toolsMissingMessage)
+		testingInstance.Fatal(toolsMissingMessage)
 	}
 	time.Sleep(10 * time.Millisecond)
 }
