@@ -91,8 +91,14 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return constants.EmptyString, errors.New(errorOpenAIAPI)
 	}
 
-	// If the initial response did not contain text but has an ID, start polling.
-	if utils.IsBlank(outputText) && !utils.IsBlank(responseIdentifier) {
+	isTerminalStatus := false
+	switch apiStatus {
+	case statusCompleted, statusSucceeded, statusDone, statusCancelled, statusFailed, statusErrored:
+		isTerminalStatus = true
+	}
+
+	// If the status is not final and we have an ID, we must poll.
+	if !isTerminalStatus && !utils.IsBlank(responseIdentifier) {
 		finalText, pollError := pollResponseUntilDone(openAIKey, responseIdentifier, structuredLogger)
 		if pollError != nil {
 			structuredLogger.Errorw(
@@ -108,6 +114,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return finalText, nil
 	}
 
+	// Otherwise, the initial response is considered final.
 	if utils.IsBlank(outputText) {
 		return constants.EmptyString, errors.New(errorOpenAIAPI)
 	}
@@ -167,7 +174,6 @@ func fetchResponseByID(deadline time.Time, openAIKey string, responseIdentifier 
 }
 
 // --- New, Corrected Response Parser ---
-
 type outputItem struct {
 	Type    string          `json:"type"`
 	Role    string          `json:"role"`
@@ -182,7 +188,6 @@ type searchAction struct {
 	Query string `json:"query"`
 }
 
-// joinParts concatenates non-empty texts from content parts.
 func joinParts(parts []contentPart) string {
 	var builder strings.Builder
 	for _, part := range parts {
@@ -199,23 +204,33 @@ func joinParts(parts []contentPart) string {
 	return builder.String()
 }
 
-// extractTextFromAny parses the response according to the new documentation.
+// extractTextFromAny parses various OpenAI response formats to find the final text.
 func extractTextFromAny(rawPayload []byte) string {
+	// The API returns different structures. We must try parsing them in order of priority.
 	var envelope struct {
 		OutputText string       `json:"output_text"`
 		Output     []outputItem `json:"output"`
 	}
 
 	if json.Unmarshal(rawPayload, &envelope) != nil {
-		return constants.EmptyString
+		// If the payload is not an object, it might be an array, which is a valid
+		// format for tool-use responses according to the documentation.
+		var outputArray []outputItem
+		if json.Unmarshal(rawPayload, &outputArray) == nil {
+			// It's an array. Replace the envelope's Output with it and proceed.
+			envelope.Output = outputArray
+		} else {
+			// Unparsable, return empty.
+			return constants.EmptyString
+		}
 	}
 
-	// 1. Check for the simple `output_text` field first.
+	// 1. Prioritize the simple `output_text` field if it exists.
 	if !utils.IsBlank(envelope.OutputText) {
 		return envelope.OutputText
 	}
 
-	// 2. If not found, parse the `output` array for a `message` item.
+	// 2. If no simple text, parse the `output` array for a final 'message'.
 	if len(envelope.Output) > 0 {
 		var assistantParts []contentPart
 		for _, item := range envelope.Output {
@@ -224,19 +239,23 @@ func extractTextFromAny(rawPayload []byte) string {
 				break
 			}
 		}
+		// If we found assistant message content, that's the answer.
 		if text := joinParts(assistantParts); !utils.IsBlank(text) {
 			return text
 		}
 	}
 
-	// 3. As a final fallback, find the last web search query.
+	// 3. If no 'message' was found, create a fallback from the last tool call.
 	if len(envelope.Output) > 0 {
 		lastQuery := ""
-		for _, part := range envelope.Output {
+		// Iterate backwards to find the *last* search call.
+		for i := len(envelope.Output) - 1; i >= 0; i-- {
+			part := envelope.Output[i]
 			if part.Type == "web_search_call" {
 				var action searchAction
 				if json.Unmarshal(part.Action, &action) == nil && !utils.IsBlank(action.Query) {
 					lastQuery = action.Query
+					break // Found the last one
 				}
 			}
 		}
@@ -249,7 +268,6 @@ func extractTextFromAny(rawPayload []byte) string {
 }
 
 // --- HTTP and Helper Functions ---
-
 func performResponsesRequest(httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEvent string) (int, []byte, int64, error) {
 	var statusCode int
 	var responseBytes []byte

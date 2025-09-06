@@ -14,12 +14,7 @@ import (
 
 // Test constants used across the entire test suite for this package.
 const (
-	TestSecret                   = "sekret"
-	TestAPIKey                   = "sk-test"
-	TestPrompt                   = "hello"
-	TestModel                    = proxy.ModelNameGPT4o
 	TestJobID                    = "resp_test_12345"
-	TestTimeout                  = 5 // seconds
 	messageBuildRouterError      = "BuildRouter error: %v"
 	messageUnexpectedPollTimeout = "upstreamPollTimeout=%v want=%v"
 )
