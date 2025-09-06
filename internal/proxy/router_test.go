@@ -2,36 +2,11 @@ package proxy_test
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/temirov/llm-proxy/internal/proxy"
-	"go.uber.org/zap"
-)
-
-const (
-	// promptValue holds the prompt sent in requests.
-	promptValue = "hello"
-	// knownModelValue identifies a valid model recognized by the validator.
-	knownModelValue = proxy.ModelNameGPT4o
-	// unknownModelValue identifies a model absent from the validator.
-	unknownModelValue = "unknown-model"
-	// systemPromptValue provides the system prompt used by the router.
-	systemPromptValue = "system"
-	// routerServiceSecret is the expected client key.
-	routerServiceSecret = "sekret"
-	// routerOpenAIKey is a stub API key.
-	routerOpenAIKey = "sk-test"
-	// responsesBodyJSON is the canned response returned by the responses API.
-	responsesBodyJSON = "{\"output\":[{\"content\":[{\"text\":\"ok\"}]}]}"
-	// requestPathTemplate formats the request path with prompt, model, and key.
-	requestPathTemplate = "/?prompt=%s&model=%s&key=%s"
-	// errorFormatBuildRouter formats BuildRouter errors.
-	errorFormatBuildRouter = "BuildRouter error: %v"
-	// errorFormatUnexpectedStatus formats unexpected HTTP status errors.
-	errorFormatUnexpectedStatus = "status=%d want=%d"
 )
 
 // chatHandlerScenario defines a single test scenario for model validation.
@@ -41,56 +16,38 @@ type chatHandlerScenario struct {
 	expectedStatusCode int
 }
 
-// TestChatHandlerValidatesModel verifies that the chat handler returns appropriate status codes for valid and invalid model identifiers.
-func TestChatHandlerValidatesModel(testingInstance *testing.T) {
+// TestChatHandlerValidatesModel verifies model validation and a successful request flow.
+func TestChatHandlerValidatesModel(t *testing.T) {
+	// Corrected to use "output_text" to match the parser's expectation.
+	const finalResponse = `{"status":"completed", "output":[{"type":"message", "role":"assistant", "content":[{"type":"output_text","text":"ok"}]}]}`
+
 	testScenarios := []chatHandlerScenario{
 		{
 			scenarioName:       "unknown model returns bad request",
-			modelIdentifier:    unknownModelValue,
+			modelIdentifier:    "unknown-model",
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
 			scenarioName:       "known model returns ok",
-			modelIdentifier:    knownModelValue,
+			modelIdentifier:    proxy.ModelNameGPT4o,
 			expectedStatusCode: http.StatusOK,
 		},
 	}
 
-	for _, currentScenario := range testScenarios {
-		testingInstance.Run(currentScenario.scenarioName, func(subTest *testing.T) {
-			responsesServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
-				io.WriteString(responseWriter, responsesBodyJSON)
-			}))
-			subTest.Cleanup(responsesServer.Close)
+	for _, tc := range testScenarios {
+		t.Run(tc.scenarioName, func(t *testing.T) {
+			mockServer := NewSessionMockServer(finalResponse)
+			defer mockServer.Close()
+			router := NewTestRouter(t, mockServer.URL)
 
-			proxy.SetResponsesURL(responsesServer.URL)
-			proxy.HTTPClient = http.DefaultClient
-			subTest.Cleanup(proxy.ResetResponsesURL)
-			subTest.Cleanup(func() { proxy.HTTPClient = http.DefaultClient })
-
-			loggerInstance, _ := zap.NewDevelopment()
-			defer loggerInstance.Sync()
-
-			builtRouter, buildRouterError := proxy.BuildRouter(proxy.Configuration{
-				ServiceSecret: routerServiceSecret,
-				OpenAIKey:     routerOpenAIKey,
-				LogLevel:      proxy.LogLevelDebug,
-				SystemPrompt:  systemPromptValue,
-				WorkerCount:   1,
-				QueueSize:     1,
-			}, loggerInstance.Sugar())
-			if buildRouterError != nil {
-				subTest.Fatalf(errorFormatBuildRouter, buildRouterError)
-			}
-
-			responseRecorder := httptest.NewRecorder()
-			requestPath := fmt.Sprintf(requestPathTemplate, promptValue, currentScenario.modelIdentifier, routerServiceSecret)
+			requestPath := fmt.Sprintf("/?prompt=%s&model=%s&key=%s", TestPrompt, tc.modelIdentifier, TestSecret)
 			request := httptest.NewRequest(http.MethodGet, requestPath, nil)
+			responseRecorder := httptest.NewRecorder()
 
-			builtRouter.ServeHTTP(responseRecorder, request)
+			router.ServeHTTP(responseRecorder, request)
 
-			if responseRecorder.Code != currentScenario.expectedStatusCode {
-				subTest.Fatalf(errorFormatUnexpectedStatus, responseRecorder.Code, currentScenario.expectedStatusCode)
+			if responseRecorder.Code != tc.expectedStatusCode {
+				t.Fatalf("status=%d want=%d", responseRecorder.Code, tc.expectedStatusCode)
 			}
 		})
 	}

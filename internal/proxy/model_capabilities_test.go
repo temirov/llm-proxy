@@ -8,48 +8,36 @@ import (
 	"github.com/temirov/llm-proxy/internal/proxy"
 )
 
-const (
-	messageFieldsMismatch = "model %s fields=%v want=%v"
-	keyModel              = "model"
-	keyInput              = "input"
-	keyMaxOutputTokens    = "max_output_tokens"
-	keyTemperature        = "temperature"
-	keyTools              = "tools"
-	keyToolChoice         = "tool_choice"
-)
-
 // TestResolveModelPayloadSchema verifies that payload schemas are returned for every model.
 func TestResolveModelPayloadSchema(testFramework *testing.T) {
 	testCases := []struct {
 		modelIdentifier string
 		expectFields    []string
 	}{
-		{proxy.ModelNameGPT4oMini, []string{keyModel, keyInput, keyMaxOutputTokens, keyTemperature}},
-		{proxy.ModelNameGPT4o, []string{keyModel, keyInput, keyMaxOutputTokens, keyTemperature, keyTools, keyToolChoice}},
-		{proxy.ModelNameGPT41, []string{keyModel, keyInput, keyMaxOutputTokens, keyTemperature, keyTools, keyToolChoice}},
-		{proxy.ModelNameGPT5Mini, []string{keyModel, keyInput, keyMaxOutputTokens}},
-		{proxy.ModelNameGPT5, []string{keyModel, keyInput, keyMaxOutputTokens, keyTools, keyToolChoice}},
+		{proxy.ModelNameGPT4oMini, []string{"model", "input", "max_output_tokens", "temperature"}},
+		{proxy.ModelNameGPT4o, []string{"model", "input", "max_output_tokens", "temperature", "tools", "tool_choice"}},
+		{proxy.ModelNameGPT41, []string{"model", "input", "max_output_tokens", "temperature", "tools", "tool_choice"}},
+		{proxy.ModelNameGPT5Mini, []string{"model", "input", "max_output_tokens"}},
+		{proxy.ModelNameGPT5, []string{"model", "input", "max_output_tokens", "tools", "tool_choice"}},
 	}
 	for _, testCase := range testCases {
 		payloadSchema := proxy.ResolveModelPayloadSchema(testCase.modelIdentifier)
 		if !equalSlices(payloadSchema.AllowedRequestFields, testCase.expectFields) {
-			testFramework.Fatalf(messageFieldsMismatch, testCase.modelIdentifier, payloadSchema.AllowedRequestFields, testCase.expectFields)
+			testFramework.Fatalf("model %s fields=%v want=%v", testCase.modelIdentifier, payloadSchema.AllowedRequestFields, testCase.expectFields)
 		}
 	}
 }
 
 // TestBuildRequestPayload verifies the correct payload structure is built for each model.
 func TestBuildRequestPayload(t *testing.T) {
-	// Dummy input for the builder
 	messages := []map[string]string{{"role": "user", "content": "hello"}}
 
 	testCases := []struct {
-		name                 string
-		modelIdentifier      string
-		webSearchEnabled     bool
-		expectTemperature    bool
-		expectTools          bool
-		expectToolChoiceAuto bool
+		name              string
+		modelIdentifier   string
+		webSearchEnabled  bool
+		expectTemperature bool
+		expectTools       bool
 	}{
 		{
 			name:              "GPT-5 with web search",
@@ -97,17 +85,12 @@ func TestBuildRequestPayload(t *testing.T) {
 			}
 			payloadJSON := string(payloadBytes)
 
-			// Check for temperature
 			if tc.expectTemperature != strings.Contains(payloadJSON, `"temperature"`) {
 				t.Errorf("Mismatch in 'temperature' field presence. Got: %s, Want presence: %v", payloadJSON, tc.expectTemperature)
 			}
-
-			// Check for tools
 			if tc.expectTools != strings.Contains(payloadJSON, `"tools"`) {
 				t.Errorf("Mismatch in 'tools' field presence. Got: %s, Want presence: %v", payloadJSON, tc.expectTools)
 			}
-
-			// Check for tool_choice
 			if tc.expectTools != strings.Contains(payloadJSON, `"tool_choice"`) {
 				t.Errorf("Mismatch in 'tool_choice' field presence. Got: %s, Want presence: %v", payloadJSON, tc.expectTools)
 			}

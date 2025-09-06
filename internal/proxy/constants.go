@@ -93,13 +93,12 @@ const (
 	// logFieldExpectedFingerprint identifies the fingerprint of the expected client key.
 	logFieldExpectedFingerprint = "expected_fingerprint"
 
-	logEventOpenAIRequestError           = "OpenAI request error"
-	logEventOpenAIResponse               = "OpenAI API response"
-	logEventOpenAIModelsList             = "OpenAI models list"
-	logEventOpenAIModelsListError        = "OpenAI models list error"
-	logEventOpenAIModelCapabilitiesError = "OpenAI model capabilities error"
-	logEventOpenAIPollError              = "OpenAI poll error"
-	// logEventParseOpenAIResponseFailed indicates that parsing the OpenAI response failed.
+	logEventOpenAIRequestError            = "OpenAI request error"
+	logEventOpenAIResponse                = "OpenAI API response"
+	logEventOpenAIModelsList              = "OpenAI models list"
+	logEventOpenAIModelsListError         = "OpenAI models list error"
+	logEventOpenAIModelCapabilitiesError  = "OpenAI model capabilities error"
+	logEventOpenAIPollError               = "OpenAI poll error"
 	logEventParseOpenAIResponseFailed     = "parse OpenAI response failed"
 	logEventForbiddenRequest              = "forbidden request"
 	logEventRequestReceived               = "request received"

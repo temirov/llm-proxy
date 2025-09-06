@@ -5,53 +5,15 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
-
-	"github.com/temirov/llm-proxy/internal/proxy"
-	"go.uber.org/zap"
 )
 
-const (
-	modelIdentifier = proxy.ModelNameGPT4o
-)
-
-// withStubbedProxy spins up stub upstream servers (models + responses),
-// points the proxy at them, builds the router, and wires cleanup.
-func withStubbedProxy(t *testing.T, openAIJSON string) http.Handler {
-	t.Helper()
-
-	// Stub responses API: always return the provided body (for both POST / and GET /{id}).
-	responsesServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(openAIJSON))
-	}))
-	t.Cleanup(responsesServer.Close)
-
-	// Point proxy at our stub.
-	proxy.SetResponsesURL(responsesServer.URL)
-	t.Cleanup(proxy.ResetResponsesURL)
-
-	// Build router.
-	logger, _ := zap.NewDevelopment()
-	t.Cleanup(func() { _ = logger.Sync() })
-	router, err := proxy.BuildRouter(proxy.Configuration{
-		ServiceSecret: serviceSecretValue,
-		OpenAIKey:     openAIKeyValue,
-		LogLevel:      proxy.LogLevelDebug,
-		WorkerCount:   1,
-		QueueSize:     1,
-	}, logger.Sugar())
-	if err != nil {
-		t.Fatalf("BuildRouter error: %v", err)
-	}
-	return router
-}
-
-// doRequest performs GET / with the shared query params and returns (status, body).
-func doRequest(t *testing.T, handler http.Handler) (int, string) {
+// doRequest performs a standard test request.
+func doRequest(t *testing.T, handler http.Handler, key string) (int, string) {
 	t.Helper()
 	q := url.Values{}
-	q.Set("prompt", promptValue)
-	q.Set("model", modelIdentifier)
-	q.Set("key", serviceSecretValue)
+	q.Set("prompt", TestPrompt)
+	q.Set("model", TestModel)
+	q.Set("key", key)
 
 	req := httptest.NewRequest(http.MethodGet, "/?"+q.Encode(), nil)
 	rec := httptest.NewRecorder()
@@ -62,70 +24,57 @@ func doRequest(t *testing.T, handler http.Handler) (int, string) {
 func Test_ResponseShapes_EndToEnd(t *testing.T) {
 	testCases := []struct {
 		name       string
-		openAIJSON string
+		openAIJSON string // This is the FINAL, polled response.
 		wantBody   string
 	}{
 		{
-			name:       "direct output_text",
-			openAIJSON: `{"output_text":"Alpha\nBeta"}`,
+			name:       "direct output_text field",
+			openAIJSON: `{"status":"completed", "output_text":"Simple Answer"}`,
+			wantBody:   "Simple Answer",
+		},
+		{
+			name:       "response message content",
+			openAIJSON: `{"status":"completed", "output":[{"type":"message", "role":"assistant", "content":[{"type":"output_text","text":"Alpha\nBeta"}]}]}`,
 			wantBody:   "Alpha\nBeta",
 		},
 		{
-			name:       "output nested containers",
-			openAIJSON: `{"output":[{"content":[{"type":"output_text","text":"One"},{"type":"output_text","text":"Two"}]}]}`,
-			wantBody:   "One\nTwo",
-		},
-		{
-			name:       "output flat parts",
-			openAIJSON: `{"output":[{"type":"output_text","text":"Flat A"},{"type":"output_text","text":"Flat B"}]}`,
-			wantBody:   "Flat A\nFlat B",
-		},
-		{
-			name:       "response nested containers (fallback)",
-			openAIJSON: `{"response":[{"content":[{"type":"output_text","text":"R1"},{"type":"output_text","text":"R2"}]}]}`,
-			wantBody:   "R1\nR2",
-		},
-		{
-			name:       "response flat parts (fallback)",
-			openAIJSON: `{"response":[{"type":"output_text","text":"RX"},{"type":"output_text","text":"RY"}]}`,
-			wantBody:   "RX\nRY",
-		},
-		{
-			name:       "choices message content (legacy fallback)",
-			openAIJSON: `{"choices":[{"message":{"content":"Legacy"}}]}`,
-			wantBody:   "Legacy",
+			name:       "fallback to last web search query",
+			openAIJSON: `{"status":"completed", "output":[{"type":"web_search_call","action":{"query":"final query"}}]}`,
+			wantBody:   `Model did not provide a final answer. Last web search: "final query"`,
 		},
 	}
 
-	for _, current := range testCases {
-		t.Run(current.name, func(t *testing.T) {
-			handler := withStubbedProxy(t, current.openAIJSON)
-			status, body := doRequest(t, handler)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockServer := NewSessionMockServer(tc.openAIJSON)
+			defer mockServer.Close()
+			router := NewTestRouter(t, mockServer.URL)
+
+			status, body := doRequest(t, router, TestSecret)
 
 			if status != http.StatusOK {
 				t.Fatalf("status=%d want=%d body=%s", status, http.StatusOK, body)
 			}
-			if body != current.wantBody {
-				t.Fatalf("got body %q want %q", body, current.wantBody)
+			if body != tc.wantBody {
+				t.Fatalf("got body %q want %q", body, tc.wantBody)
 			}
 		})
 	}
 }
 
-// Proves precedence is output > response > choices.
 func Test_ResponsePrecedence_EndToEnd(t *testing.T) {
-	compound := `{
-		"choices":[{"message":{"content":"C"}}],
-		"response":[{"content":[{"type":"output_text","text":"R"}]}],
-		"output":[{"type":"output_text","text":"O"}]
-	}`
-	handler := withStubbedProxy(t, compound)
-	status, body := doRequest(t, handler)
+	// This test verifies that a final assistant message is preferred over the fallback.
+	compound := `{"status":"completed", "output":[{"type":"message", "role":"assistant", "content":[{"type":"output_text","text":"Final Answer"}]}, {"type":"web_search_call","action":{"query":"some query"}}]}`
+	mockServer := NewSessionMockServer(compound)
+	defer mockServer.Close()
+	router := NewTestRouter(t, mockServer.URL)
+
+	status, body := doRequest(t, router, TestSecret)
 
 	if status != http.StatusOK {
 		t.Fatalf("status=%d want=%d body=%s", status, http.StatusOK, body)
 	}
-	if body != "O" {
-		t.Fatalf("precedence wrong: got %q want %q", body, "O")
+	if body != "Final Answer" {
+		t.Fatalf("precedence wrong: got %q want %q", body, "Final Answer")
 	}
 }

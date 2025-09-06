@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -41,17 +42,13 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		{keyRole: keyUser, keyContent: userPrompt},
 	}
 
-	// 1. Build the model-specific payload by calling the dedicated builder function.
 	payload := BuildRequestPayload(modelIdentifier, messageList, webSearchEnabled)
-
-	// 2. Marshal the resulting payload struct.
 	payloadBytes, marshalError := json.Marshal(payload)
 	if marshalError != nil {
 		structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalError)
 		return constants.EmptyString, errors.New(errorRequestBuild)
 	}
 
-	// 3. Send the request and handle the response.
 	requestContext, cancelRequest := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancelRequest()
 	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, ResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
@@ -71,13 +68,11 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	var decodedObject map[string]any
 	if unmarshalError := json.Unmarshal(responseBytes, &decodedObject); unmarshalError != nil {
 		structuredLogger.Errorw(logEventParseOpenAIResponseFailed, constants.LogFieldError, unmarshalError)
-		decodedObject = nil
 	}
 
-	outputText := extractTextFromAny(decodedObject, responseBytes)
+	outputText := extractTextFromAny(responseBytes)
 	responseIdentifier := utils.GetString(decodedObject, jsonFieldID)
-	status := utils.GetString(decodedObject, jsonFieldStatus)
-	apiStatus := strings.ToLower(status)
+	apiStatus := utils.GetString(decodedObject, jsonFieldStatus)
 
 	structuredLogger.Infow(
 		logEventOpenAIResponse,
@@ -96,35 +91,24 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return constants.EmptyString, errors.New(errorOpenAIAPI)
 	}
 
+	// If the initial response did not contain text but has an ID, start polling.
 	if utils.IsBlank(outputText) && !utils.IsBlank(responseIdentifier) {
 		finalText, pollError := pollResponseUntilDone(openAIKey, responseIdentifier, structuredLogger)
 		if pollError != nil {
 			structuredLogger.Errorw(
 				logEventOpenAIPollError,
-				logFieldID,
-				responseIdentifier,
-				constants.LogFieldError,
-				pollError,
+				logFieldID, responseIdentifier,
+				constants.LogFieldError, pollError,
 			)
 			return constants.EmptyString, errors.New(errorOpenAIAPI)
 		}
 		if utils.IsBlank(finalText) {
-			structuredLogger.Desugar().Error(
-				errorOpenAIAPI,
-				zap.Int(logFieldStatus, statusCode),
-				zap.ByteString(logFieldResponseBody, responseBytes),
-			)
 			return constants.EmptyString, errors.New(errorOpenAIAPINoText)
 		}
 		return finalText, nil
 	}
 
 	if utils.IsBlank(outputText) {
-		structuredLogger.Desugar().Error(
-			errorOpenAIAPI,
-			zap.Int(logFieldStatus, statusCode),
-			zap.ByteString(logFieldResponseBody, responseBytes),
-		)
 		return constants.EmptyString, errors.New(errorOpenAIAPI)
 	}
 	return outputText, nil
@@ -133,15 +117,11 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 // pollResponseUntilDone repeatedly fetches a response until it is complete or the poll timeout elapses.
 func pollResponseUntilDone(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, error) {
 	deadlineInstant := time.Now().Add(upstreamPollTimeout)
-	pollInterval := 300 * time.Millisecond
-
 	for {
 		if time.Now().After(deadlineInstant) {
 			return constants.EmptyString, ErrUpstreamIncomplete
 		}
-		pollContext, cancelPoll := context.WithDeadline(context.Background(), deadlineInstant)
-		textCandidate, responseComplete, fetchError := fetchResponseByID(pollContext, openAIKey, responseIdentifier, structuredLogger)
-		cancelPoll()
+		textCandidate, responseComplete, fetchError := fetchResponseByID(deadlineInstant, openAIKey, responseIdentifier, structuredLogger)
 		if fetchError != nil {
 			return constants.EmptyString, fetchError
 		}
@@ -151,35 +131,30 @@ func pollResponseUntilDone(openAIKey string, responseIdentifier string, structur
 		if responseComplete {
 			return constants.EmptyString, errors.New(errorOpenAIAPINoText)
 		}
-		time.Sleep(pollInterval)
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 
 // fetchResponseByID retrieves a response by identifier and reports whether the response is complete.
-func fetchResponseByID(contextToUse context.Context, openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, bool, error) {
+func fetchResponseByID(deadline time.Time, openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, bool, error) {
 	resourceURL := ResponsesURL() + "/" + responseIdentifier
-	requestContext, cancelRequest := context.WithTimeout(contextToUse, requestTimeout)
-	defer cancelRequest()
-	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodGet, resourceURL, openAIKey, nil)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+
+	httpRequest, buildError := buildAuthorizedJSONRequest(ctx, http.MethodGet, resourceURL, openAIKey, nil)
 	if buildError != nil {
 		return constants.EmptyString, false, buildError
 	}
 
 	_, responseBytes, _, requestError := performResponsesRequest(httpRequest, structuredLogger, logEventOpenAIPollError)
 	if requestError != nil {
-		if errors.Is(requestError, context.DeadlineExceeded) {
-			return constants.EmptyString, false, requestError
-		}
-		return constants.EmptyString, false, errors.New(errorOpenAIRequest)
+		return constants.EmptyString, false, requestError
 	}
 
 	var decodedObject map[string]any
-	if unmarshalError := json.Unmarshal(responseBytes, &decodedObject); unmarshalError != nil {
-		structuredLogger.Errorw(logEventParseOpenAIResponseFailed, constants.LogFieldError, unmarshalError)
-		decodedObject = nil
-	}
+	_ = json.Unmarshal(responseBytes, &decodedObject)
 	responseStatus := strings.ToLower(utils.GetString(decodedObject, jsonFieldStatus))
-	outputText := extractTextFromAny(decodedObject, responseBytes)
+	outputText := extractTextFromAny(responseBytes)
 
 	switch responseStatus {
 	case statusCompleted, statusSucceeded, statusDone:
@@ -191,130 +166,90 @@ func fetchResponseByID(contextToUse context.Context, openAIKey string, responseI
 	}
 }
 
-// ---- shared shapes for response decoding ----
+// --- New, Corrected Response Parser ---
 
+type outputItem struct {
+	Type    string          `json:"type"`
+	Role    string          `json:"role"`
+	Content []contentPart   `json:"content"`
+	Action  json.RawMessage `json:"action"`
+}
 type contentPart struct {
 	Type string `json:"type"`
 	Text string `json:"text"`
 }
-
-type contentContainer struct {
-	Content []contentPart `json:"content"`
+type searchAction struct {
+	Query string `json:"query"`
 }
 
-// responseMessage models a message in the API response's message list.
-type responseMessage struct {
-	Role    string        `json:"role"`
-	Content []contentPart `json:"content"`
-}
-
-// joinParts concatenates non-empty texts with a single line break between parts.
+// joinParts concatenates non-empty texts from content parts.
 func joinParts(parts []contentPart) string {
 	var builder strings.Builder
 	for _, part := range parts {
-		text := strings.TrimSpace(part.Text)
-		if text == constants.EmptyString {
-			continue
+		if part.Type == "output_text" {
+			text := strings.TrimSpace(part.Text)
+			if text != constants.EmptyString {
+				if builder.Len() > 0 {
+					builder.WriteString(constants.LineBreak)
+				}
+				builder.WriteString(text)
+			}
 		}
-		if builder.Len() > 0 {
-			builder.WriteString(constants.LineBreak)
-		}
-		builder.WriteString(text)
 	}
 	return builder.String()
 }
 
-// decodePartsFromRaw tries both shapes for a list of text parts:
-// 1) []contentContainer (each has .content[])
-// 2) []contentPart (flat array)
-// Returns (text, true) if anything decodes to non-empty text.
-func decodePartsFromRaw(raw json.RawMessage) (string, bool) {
-	// Try nested: []contentContainer
-	var nested []contentContainer
-	if json.Unmarshal(raw, &nested) == nil && len(nested) > 0 {
-		var allParts []contentPart
-		for _, container := range nested {
-			if len(container.Content) > 0 {
-				allParts = append(allParts, container.Content...)
-			}
-		}
-		if text := joinParts(allParts); text != constants.EmptyString {
-			return text, true
-		}
-	}
-
-	// Try flat: []contentPart
-	var flat []contentPart
-	if json.Unmarshal(raw, &flat) == nil && len(flat) > 0 {
-		if text := joinParts(flat); text != constants.EmptyString {
-			return text, true
-		}
-	}
-
-	return constants.EmptyString, false
-}
-
-// extractTextFromAny obtains text content from known response shapes using a single unmarshal pass.
-func extractTextFromAny(container map[string]any, rawPayload []byte) string {
-	// Fast path: direct "output_text"
-	if container != nil {
-		if direct, ok := container[jsonFieldOutputText].(string); ok && !utils.IsBlank(direct) {
-			return direct
-		}
-	}
-
-	// General envelope shapes.
+// extractTextFromAny parses the response according to the new documentation.
+func extractTextFromAny(rawPayload []byte) string {
 	var envelope struct {
-		Output   json.RawMessage `json:"output"`
-		Response json.RawMessage `json:"response"`
-		// Fallback compatibility for choices[].message.content
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+		OutputText string       `json:"output_text"`
+		Output     []outputItem `json:"output"`
 	}
-	if unmarshalError := json.Unmarshal(rawPayload, &envelope); unmarshalError != nil {
+
+	if json.Unmarshal(rawPayload, &envelope) != nil {
 		return constants.EmptyString
 	}
 
-	// Explicit precedence: output → response → choices fallback
+	// 1. Check for the simple `output_text` field first.
+	if !utils.IsBlank(envelope.OutputText) {
+		return envelope.OutputText
+	}
+
+	// 2. If not found, parse the `output` array for a `message` item.
 	if len(envelope.Output) > 0 {
-		if text, ok := decodePartsFromRaw(envelope.Output); ok {
+		var assistantParts []contentPart
+		for _, item := range envelope.Output {
+			if item.Type == "message" && item.Role == keyAssistant {
+				assistantParts = item.Content
+				break
+			}
+		}
+		if text := joinParts(assistantParts); !utils.IsBlank(text) {
 			return text
 		}
 	}
-	if len(envelope.Response) > 0 {
-		// New: Try to parse 'response' as a list of messages, which is the
-		// standard for completed jobs that used tools.
-		var messages []responseMessage
-		if json.Unmarshal(envelope.Response, &messages) == nil {
-			var assistantParts []contentPart
-			// Find the last message from the assistant, which contains the final answer.
-			for i := len(messages) - 1; i >= 0; i-- {
-				if messages[i].Role == keyAssistant {
-					assistantParts = messages[i].Content
-					break
+
+	// 3. As a final fallback, find the last web search query.
+	if len(envelope.Output) > 0 {
+		lastQuery := ""
+		for _, part := range envelope.Output {
+			if part.Type == "web_search_call" {
+				var action searchAction
+				if json.Unmarshal(part.Action, &action) == nil && !utils.IsBlank(action.Query) {
+					lastQuery = action.Query
 				}
 			}
-			if text := joinParts(assistantParts); text != constants.EmptyString {
-				return text
-			}
 		}
+		if !utils.IsBlank(lastQuery) {
+			return fmt.Sprintf("Model did not provide a final answer. Last web search: \"%s\"", lastQuery)
+		}
+	}
 
-		// Fallback for other possible 'response' shapes.
-		if text, ok := decodePartsFromRaw(envelope.Response); ok {
-			return text
-		}
-	}
-	if len(envelope.Choices) > 0 {
-		return strings.TrimSpace(envelope.Choices[0].Message.Content)
-	}
 	return constants.EmptyString
 }
 
-// performResponsesRequest executes the HTTP request and retries when the status code indicates a server error.
-// The retries continue with exponential backoff until the request context deadline is exceeded.
+// --- HTTP and Helper Functions ---
+
 func performResponsesRequest(httpRequest *http.Request, structuredLogger *zap.SugaredLogger, logEvent string) (int, []byte, int64, error) {
 	var statusCode int
 	var responseBytes []byte
@@ -336,13 +271,14 @@ func performResponsesRequest(httpRequest *http.Request, structuredLogger *zap.Su
 	return statusCode, responseBytes, latencyMillis, retryError
 }
 
-// buildAuthorizedJSONRequest constructs an HTTP request with authorization and JSON content type headers using the provided context.
 func buildAuthorizedJSONRequest(contextToUse context.Context, method string, resourceURL string, openAIKey string, body io.Reader) (*http.Request, error) {
 	httpRequest, httpRequestError := http.NewRequestWithContext(contextToUse, method, resourceURL, body)
 	if httpRequestError != nil {
 		return nil, httpRequestError
 	}
 	httpRequest.Header.Set(headerAuthorization, headerAuthorizationPrefix+openAIKey)
-	httpRequest.Header.Set(headerContentType, mimeApplicationJSON)
+	if body != nil {
+		httpRequest.Header.Set(headerContentType, mimeApplicationJSON)
+	}
 	return httpRequest, nil
 }
