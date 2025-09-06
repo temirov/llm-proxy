@@ -98,6 +98,8 @@ func TestBuildRequestPayload(t *testing.T) {
 	}
 }
 
+// equalSlices reports whether both string slices contain the same elements in
+// the same order.
 func equalSlices(first []string, second []string) bool {
 	if len(first) != len(second) {
 		return false
