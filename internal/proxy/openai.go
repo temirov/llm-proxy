@@ -299,7 +299,11 @@ func (client *OpenAIClient) startSynthesisContinuation(openAIKey string, previou
 			keyVerbosity: verbosityLow,
 		},
 	}
-	payloadBytes, _ := json.Marshal(payload)
+	payloadBytes, marshalError := json.Marshal(payload)
+	if marshalError != nil {
+		structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalError)
+		return constants.EmptyString, marshalError
+	}
 
 	requestContext, cancelRequest := context.WithTimeout(context.Background(), client.requestTimeout)
 	defer cancelRequest()
