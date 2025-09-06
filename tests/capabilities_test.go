@@ -2,6 +2,7 @@ package tests_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,131 +13,104 @@ import (
 	"go.uber.org/zap"
 )
 
-// Test constants.
+// Constants used in tests.
 const (
-	modelIDGPT4o     = proxy.ModelNameGPT4o
-	modelIDGPT4oMini = proxy.ModelNameGPT4oMini
-	modelIDGPT5Mini  = proxy.ModelNameGPT5Mini
-	serviceSecret    = "sekret"
-	openAIKey        = "sk-test"
-	logLevel         = "debug"
+	modelIDGPT4o                   = proxy.ModelNameGPT4o
+	modelIDGPT4oMini               = proxy.ModelNameGPT4oMini
+	modelIDGPT5Mini                = proxy.ModelNameGPT5Mini
+	serviceSecret                  = "sekret"
+	openAIKey                      = "sk-test"
+	logLevel                       = "debug"
+	openAIResponsesPath            = "/v1/responses"
+	openAIResponseTemplate         = `{"output_text":"%s"}`
+	responseTextWithoutTools       = "NO_TOOLS_OK"
+	responseTextWithoutTemperature = "TEMPLESS_OK"
 )
 
-// TestIntegration_TemperatureNotAllowed_OmitsParameter confirms that temperature is omitted when not allowed by metadata.
-func TestIntegration_TemperatureNotAllowed_OmitsParameter(testingInstance *testing.T) {
-	var observed any
-
-	openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
-		switch {
-		case strings.HasSuffix(httpRequest.URL.Path, "/v1/responses"):
-			body, _ := io.ReadAll(httpRequest.Body)
-			_ = json.Unmarshal(body, &observed)
-			io.WriteString(responseWriter, `{"output_text":"TEMPLESS_OK"}`)
-		default:
-			http.NotFound(responseWriter, httpRequest)
-		}
-	}))
-	defer openAIServer.Close()
-
-	proxy.DefaultEndpoints.SetResponsesURL(openAIServer.URL + "/v1/responses")
-	proxy.HTTPClient = openAIServer.Client()
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
-
-	logger, _ := zap.NewDevelopment()
-	defer logger.Sync()
-
-	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
-		ServiceSecret: serviceSecret,
-		OpenAIKey:     openAIKey,
-		LogLevel:      logLevel,
-		WorkerCount:   1,
-		QueueSize:     4,
-	}, logger.Sugar())
-	if buildRouterError != nil {
-		testingInstance.Fatalf("BuildRouter error: %v", buildRouterError)
+// TestIntegration_OmitsDisallowedParameters confirms that metadata disallowed fields are removed from requests.
+func TestIntegration_OmitsDisallowedParameters(testingInstance *testing.T) {
+	testCases := []struct {
+		testName         string
+		modelIdentifier  string
+		additionalQuery  string
+		expectedResponse string
+		disallowedFields []string
+	}{
+		{
+			testName:         "temperature omitted",
+			modelIdentifier:  modelIDGPT5Mini,
+			additionalQuery:  "",
+			expectedResponse: responseTextWithoutTemperature,
+			disallowedFields: []string{"temperature"},
+		},
+		{
+			testName:         "tools omitted",
+			modelIdentifier:  modelIDGPT4oMini,
+			additionalQuery:  "&web_search=1",
+			expectedResponse: responseTextWithoutTools,
+			disallowedFields: []string{"tools", "tool_choice"},
+		},
 	}
 
-	applicationServer := httptest.NewServer(router)
-	defer applicationServer.Close()
+	for _, testCase := range testCases {
+		currentTestCase := testCase
+		testingInstance.Run(currentTestCase.testName, func(subTestInstance *testing.T) {
+			var observed any
 
-	httpResponse, requestError := http.Get(applicationServer.URL + "/?prompt=hello&key=" + serviceSecret + "&model=" + modelIDGPT5Mini)
-	if requestError != nil {
-		testingInstance.Fatalf("request failed: %v", requestError)
-	}
-	defer httpResponse.Body.Close()
+			openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
+				switch {
+				case strings.HasSuffix(httpRequest.URL.Path, openAIResponsesPath):
+					body, _ := io.ReadAll(httpRequest.Body)
+					_ = json.Unmarshal(body, &observed)
+					io.WriteString(responseWriter, fmt.Sprintf(openAIResponseTemplate, currentTestCase.expectedResponse))
+				default:
+					http.NotFound(responseWriter, httpRequest)
+				}
+			}))
+			defer openAIServer.Close()
 
-	if httpResponse.StatusCode != http.StatusOK {
-		responseBody, _ := io.ReadAll(httpResponse.Body)
-		testingInstance.Fatalf("status=%d body=%s", httpResponse.StatusCode, string(responseBody))
-	}
-	if payload, ok := observed.(map[string]any); ok {
-		if _, found := payload["temperature"]; found {
-			testingInstance.Fatalf("temperature present in payload: %v", payload)
-		}
-	}
-	responseBytes, _ := io.ReadAll(httpResponse.Body)
-	if strings.TrimSpace(string(responseBytes)) != "TEMPLESS_OK" {
-		testingInstance.Fatalf("body=%q want %q", string(responseBytes), "TEMPLESS_OK")
-	}
-}
+			proxy.DefaultEndpoints.SetResponsesURL(openAIServer.URL + openAIResponsesPath)
+			proxy.HTTPClient = openAIServer.Client()
+			subTestInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
 
-// TestIntegration_ToolsNotAllowed_OmitsParameters verifies that tool parameters are omitted when metadata disallows them.
-func TestIntegration_ToolsNotAllowed_OmitsParameters(testingInstance *testing.T) {
-	var observed any
+			logger, _ := zap.NewDevelopment()
+			defer logger.Sync()
 
-	openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
-		switch {
-		case strings.HasSuffix(httpRequest.URL.Path, "/v1/responses"):
-			body, _ := io.ReadAll(httpRequest.Body)
-			_ = json.Unmarshal(body, &observed)
-			io.WriteString(responseWriter, `{"output_text":"NO_TOOLS_OK"}`)
-		default:
-			http.NotFound(responseWriter, httpRequest)
-		}
-	}))
-	defer openAIServer.Close()
+			router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
+				ServiceSecret: serviceSecret,
+				OpenAIKey:     openAIKey,
+				LogLevel:      logLevel,
+				WorkerCount:   1,
+				QueueSize:     4,
+			}, logger.Sugar())
+			if buildRouterError != nil {
+				subTestInstance.Fatalf("BuildRouter error: %v", buildRouterError)
+			}
 
-	proxy.DefaultEndpoints.SetResponsesURL(openAIServer.URL + "/v1/responses")
-	proxy.HTTPClient = openAIServer.Client()
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
+			applicationServer := httptest.NewServer(router)
+			defer applicationServer.Close()
 
-	logger, _ := zap.NewDevelopment()
-	defer logger.Sync()
+			httpResponse, requestError := http.Get(applicationServer.URL + "/?prompt=hello&key=" + serviceSecret + "&model=" + currentTestCase.modelIdentifier + currentTestCase.additionalQuery)
+			if requestError != nil {
+				subTestInstance.Fatalf("request failed: %v", requestError)
+			}
+			defer httpResponse.Body.Close()
 
-	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
-		ServiceSecret: serviceSecret,
-		OpenAIKey:     openAIKey,
-		LogLevel:      logLevel,
-		WorkerCount:   1,
-		QueueSize:     4,
-	}, logger.Sugar())
-	if buildRouterError != nil {
-		testingInstance.Fatalf("BuildRouter error: %v", buildRouterError)
-	}
-
-	applicationServer := httptest.NewServer(router)
-	defer applicationServer.Close()
-
-	httpResponse, requestError := http.Get(applicationServer.URL + "/?prompt=hello&key=" + serviceSecret + "&model=" + modelIDGPT4oMini + "&web_search=1")
-	if requestError != nil {
-		testingInstance.Fatalf("request failed: %v", requestError)
-	}
-	defer httpResponse.Body.Close()
-
-	if httpResponse.StatusCode != http.StatusOK {
-		responseBody, _ := io.ReadAll(httpResponse.Body)
-		testingInstance.Fatalf("status=%d body=%s", httpResponse.StatusCode, string(responseBody))
-	}
-	if payload, ok := observed.(map[string]any); ok {
-		if _, found := payload["tools"]; found {
-			testingInstance.Fatalf("tools present in payload: %v", payload)
-		}
-		if _, found := payload["tool_choice"]; found {
-			testingInstance.Fatalf("tool_choice present in payload: %v", payload)
-		}
-	}
-	responseBytes, _ := io.ReadAll(httpResponse.Body)
-	if strings.TrimSpace(string(responseBytes)) != "NO_TOOLS_OK" {
-		testingInstance.Fatalf("body=%q want %q", string(responseBytes), "NO_TOOLS_OK")
+			if httpResponse.StatusCode != http.StatusOK {
+				responseBody, _ := io.ReadAll(httpResponse.Body)
+				subTestInstance.Fatalf("status=%d body=%s", httpResponse.StatusCode, string(responseBody))
+			}
+			if payload, ok := observed.(map[string]any); ok {
+				for _, fieldName := range currentTestCase.disallowedFields {
+					if _, found := payload[fieldName]; found {
+						subTestInstance.Fatalf("%s present in payload: %v", fieldName, payload)
+					}
+				}
+			}
+			responseBytes, _ := io.ReadAll(httpResponse.Body)
+			if strings.TrimSpace(string(responseBytes)) != currentTestCase.expectedResponse {
+				subTestInstance.Fatalf("body=%q want %q", string(responseBytes), currentTestCase.expectedResponse)
+			}
+		})
 	}
 }
