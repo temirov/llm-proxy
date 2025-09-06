@@ -40,8 +40,7 @@ const (
 	errorOpenAIFailedStatus = "OpenAI API error (failed status)"
 	errorOpenAIContinue     = "OpenAI API continue error"
 	// errorUpstreamIncomplete indicates that the upstream provider returned an incomplete response.
-	errorUpstreamIncomplete    = "OpenAI API error (incomplete response)"
-	errorOpenAIModelValidation = "OpenAI model validation error"
+        errorUpstreamIncomplete = "OpenAI API error (incomplete response)"
 	// errorUnknownModel indicates that a model identifier is not recognized.
 	errorUnknownModel   = "unknown model"
 	errorResponseFormat = "response formatting error"
@@ -72,13 +71,7 @@ const (
 	// fallbackFinalAnswerFormat formats a message when the model does not provide a final answer.
 	fallbackFinalAnswerFormat = "Model did not provide a final answer. Last web search: \"%s\""
 
-	keyRole = "role"
-	keyUser = "user"
-
-	keySystem             = "system"
-	keyAssistant          = "assistant"
-	keyContent            = "content"
-	keyModel              = "model"
+        keyModel              = "model"
 	keyInput              = "input"
 	keyTemperature        = "temperature"
 	keyMaxOutputTokens    = "max_output_tokens"
@@ -96,10 +89,9 @@ const (
 	textFormatType        = "text"
 	verbosityLow          = "low"
 
-	jsonFieldID         = "id"
-	jsonFieldStatus     = "status"
-	jsonFieldOutputText = "output_text"
-	jsonFieldResponse   = "response"
+        jsonFieldID       = "id"
+        jsonFieldStatus   = "status"
+        jsonFieldResponse = "response"
 
 	statusCompleted = "completed"
 	statusSucceeded = "succeeded"
@@ -117,37 +109,30 @@ const (
 	logFieldPath         = "path"
 	logFieldClientIP     = "client_ip"
 	logFieldStatus       = "status"
-	logFieldValue        = "value"
-	// logFieldParameter identifies the request parameter related to a log entry.
-	logFieldParameter = "parameter"
-	// logFieldID identifies the response identifier logged for traceability.
-	logFieldID = "id"
+        logFieldValue = "value"
+        // logFieldID identifies the response identifier logged for traceability.
+        logFieldID = "id"
 
 	// logFieldExpectedFingerprint identifies the fingerprint of the expected client key.
 	logFieldExpectedFingerprint = "expected_fingerprint"
 
 	logEventOpenAIRequestError           = "OpenAI request error"
 	logEventOpenAIResponse               = "OpenAI API response"
-	logEventOpenAIModelsList             = "OpenAI models list"
-	logEventOpenAIModelsListError        = "OpenAI models list error"
-	logEventOpenAIModelCapabilitiesError = "OpenAI model capabilities error"
-	logEventOpenAIPollError              = "OpenAI poll error"
-	logEventOpenAIContinueError          = "OpenAI continue error"
+        logEventOpenAIPollError              = "OpenAI poll error"
+        logEventOpenAIContinueError          = "OpenAI continue error"
 	// logEventOpenAIInitialResponseBody records the body of the initial response from OpenAI.
 	logEventOpenAIInitialResponseBody = "OpenAI initial response body"
 	// logEventMissingFinalMessage indicates that the response completed without a final assistant message.
 	logEventMissingFinalMessage = "response is 'completed' but lacks final message; starting synthesis continuation"
 	// logEventRetryingSynthesis reports a retry of synthesis due to an empty initial attempt.
-	logEventRetryingSynthesis             = "first synthesis continuation yielded no text; retrying once with stricter settings"
-	logEventParseOpenAIResponseFailed     = "parse OpenAI response failed"
-	logEventForbiddenRequest              = "forbidden request"
-	logEventRequestReceived               = "request received"
-	logEventResponseSent                  = "response sent"
-	logEventMarshalRequestPayload         = "marshal request payload failed"
-	logEventMarshalResponsePayload        = "marshal response payload failed"
-	logEventBuildHTTPRequest              = "build HTTP request failed"
-	logEventRetryingWithoutParam          = "retrying without parameter"
-	logEventParseWebSearchParameterFailed = "parse web_search parameter failed"
+        logEventRetryingSynthesis          = "first synthesis continuation yielded no text; retrying once with stricter settings"
+        logEventForbiddenRequest           = "forbidden request"
+        logEventRequestReceived            = "request received"
+        logEventResponseSent               = "response sent"
+        logEventMarshalRequestPayload      = "marshal request payload failed"
+        logEventMarshalResponsePayload     = "marshal response payload failed"
+        logEventBuildHTTPRequest           = "build HTTP request failed"
+        logEventParseWebSearchParameterFailed = "parse web_search parameter failed"
 
 	responseRequestAttribute = "request"
 )
