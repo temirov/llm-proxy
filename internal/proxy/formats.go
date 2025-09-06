@@ -13,7 +13,7 @@ import (
 
 // preferredMime determines the response MIME type using the format query parameter or the Accept header.
 func preferredMime(ginContext *gin.Context) string {
-	if explicitFormat := ginContext.Query(queryParameterFormat); explicitFormat != "" {
+	if explicitFormat := ginContext.Query(queryParameterFormat); explicitFormat != constants.EmptyString {
 		return strings.ToLower(strings.TrimSpace(explicitFormat))
 	}
 	return strings.ToLower(strings.TrimSpace(ginContext.GetHeader(headerAccept)))
