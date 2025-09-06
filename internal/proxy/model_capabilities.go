@@ -54,11 +54,11 @@ type Tool struct {
 }
 
 // BuildRequestPayload selects the correct struct for the given model and returns it.
-func BuildRequestPayload(modelIdentifier string, combinedPrompt string, webSearchEnabled bool) any {
+func BuildRequestPayload(modelIdentifier string, combinedPrompt string, webSearchEnabled bool, maxTokens int) any {
 	base := requestPayloadBase{
 		Model:           modelIdentifier,
 		Input:           combinedPrompt,
-		MaxOutputTokens: maxOutputTokens,
+		MaxOutputTokens: maxTokens,
 	}
 
 	// Declaratively choose the payload structure based on the model.

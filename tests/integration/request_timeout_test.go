@@ -21,16 +21,16 @@ const (
 )
 
 // makeTimeoutHTTPClient returns an HTTP client whose responses delay longer than the request timeout.
-func makeTimeoutHTTPClient(testingInstance *testing.T) *http.Client {
+func makeTimeoutHTTPClient(testingInstance *testing.T, endpoints *proxy.Endpoints) *http.Client {
 	testingInstance.Helper()
 	return &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 			switch {
-			case request.URL.String() == proxy.DefaultEndpoints.GetModelsURL():
+			case request.URL.String() == endpoints.GetModelsURL():
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(modelsListBody)), Header: make(http.Header)}, nil
-			case strings.HasPrefix(request.URL.String(), proxy.DefaultEndpoints.GetModelsURL()+"/"):
+			case strings.HasPrefix(request.URL.String(), endpoints.GetModelsURL()+"/"):
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadataTemperatureTools)), Header: make(http.Header)}, nil
-			case request.URL.String() == proxy.DefaultEndpoints.GetResponsesURL():
+			case request.URL.String() == endpoints.GetResponsesURL():
 				select {
 				case <-request.Context().Done():
 					return nil, request.Context().Err()
@@ -52,8 +52,9 @@ func TestIntegrationUpstreamRequestTimeoutTriggersGatewayTimeout(testingInstance
 	testCases := []struct{ name string }{{name: "gateway_timeout"}}
 	for _, testCase := range testCases {
 		testingInstance.Run(testCase.name, func(subTest *testing.T) {
-			configureProxy(subTest, makeTimeoutHTTPClient(subTest))
-			router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: logLevelDebug, WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: timeoutRequestTimeout}, newLogger(subTest))
+			endpoints := proxy.NewEndpoints()
+			configureProxy(subTest, makeTimeoutHTTPClient(subTest, endpoints), endpoints)
+			router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: logLevelDebug, WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: timeoutRequestTimeout, Endpoints: endpoints}, newLogger(subTest))
 			if buildError != nil {
 				subTest.Fatalf("BuildRouter failed: %v", buildError)
 			}

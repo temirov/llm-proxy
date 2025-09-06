@@ -15,6 +15,11 @@ import (
 
 type roundTripperFunc func(httpRequest *http.Request) (*http.Response, error)
 
+const (
+	modelsURL    = "https://mock.local/v1/models"
+	responsesURL = "https://mock.local/v1/responses"
+)
+
 func (roundTripper roundTripperFunc) RoundTrip(httpRequest *http.Request) (*http.Response, error) {
 	return roundTripper(httpRequest)
 }
@@ -23,19 +28,23 @@ func (roundTripper roundTripperFunc) RoundTrip(httpRequest *http.Request) (*http
 func newRouterWithStubbedOpenAI(testingInstance *testing.T, modelsBody, responsesBody string, workerCount, queueSize, requestTimeoutSeconds int) *gin.Engine {
 	testingInstance.Helper()
 
+	endpoints := proxy.NewEndpoints()
+	endpoints.SetModelsURL(modelsURL)
+	endpoints.SetResponsesURL(responsesURL)
+
 	originalClient := proxy.HTTPClient
 	testingInstance.Cleanup(func() { proxy.HTTPClient = originalClient })
 
 	proxy.HTTPClient = &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 			switch request.URL.String() {
-			case proxy.DefaultEndpoints.GetModelsURL():
+			case endpoints.GetModelsURL():
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Body:       io.NopCloser(strings.NewReader(modelsBody)),
 					Header:     make(http.Header),
 				}, nil
-			case proxy.DefaultEndpoints.GetResponsesURL():
+			case endpoints.GetResponsesURL():
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Body:       io.NopCloser(strings.NewReader(responsesBody)),
@@ -61,6 +70,7 @@ func newRouterWithStubbedOpenAI(testingInstance *testing.T, modelsBody, response
 		WorkerCount:           workerCount,
 		QueueSize:             queueSize,
 		RequestTimeoutSeconds: requestTimeoutSeconds,
+		Endpoints:             endpoints,
 	}, logger.Sugar())
 	if buildError != nil {
 		testingInstance.Fatalf("BuildRouter error: %v", buildError)
@@ -71,11 +81,6 @@ func newRouterWithStubbedOpenAI(testingInstance *testing.T, modelsBody, response
 // TestEndpoint_Empty200TreatedAsError ensures that empty successful responses are treated as errors.
 func TestEndpoint_Empty200TreatedAsError(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
-
-	proxy.DefaultEndpoints.SetModelsURL("https://mock.local/v1/models")
-	proxy.DefaultEndpoints.SetResponsesURL("https://mock.local/v1/responses")
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetModelsURL() })
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
 
 	router := newRouterWithStubbedOpenAI(
 		testingInstance,
@@ -104,11 +109,6 @@ func TestEndpoint_Empty200TreatedAsError(testingInstance *testing.T) {
 // TestEndpoint_RespectsAcceptHeaderCSV validates CSV responses when the Accept header requests text/csv.
 func TestEndpoint_RespectsAcceptHeaderCSV(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
-
-	proxy.DefaultEndpoints.SetModelsURL("https://mock.local/v1/models")
-	proxy.DefaultEndpoints.SetResponsesURL("https://mock.local/v1/responses")
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetModelsURL() })
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
 
 	router := newRouterWithStubbedOpenAI(
 		testingInstance,
@@ -142,11 +142,6 @@ func TestEndpoint_RespectsAcceptHeaderCSV(testingInstance *testing.T) {
 // TestEndpoint_ReturnsServiceUnavailableWhenQueueFull confirms that a full queue results in an HTTP 503 status code.
 func TestEndpoint_ReturnsServiceUnavailableWhenQueueFull(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
-
-	proxy.DefaultEndpoints.SetModelsURL("https://mock.local/v1/models")
-	proxy.DefaultEndpoints.SetResponsesURL("https://mock.local/v1/responses")
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetModelsURL() })
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
 
 	router := newRouterWithStubbedOpenAI(
 		testingInstance,

@@ -38,6 +38,9 @@ func BuildRouter(configuration Configuration, structuredLogger *zap.SugaredLogge
 	}
 
 	configuration.ApplyTunables()
+	if configuration.Endpoints == nil {
+		configuration.Endpoints = NewEndpoints()
+	}
 
 	validator, validatorError := newModelValidator()
 	if validatorError != nil {
@@ -56,7 +59,9 @@ func BuildRouter(configuration Configuration, structuredLogger *zap.SugaredLogge
 	}
 
 	taskQueue := make(chan requestTask, configuration.QueueSize)
-	openAIClient := NewOpenAIClient(HTTPClient, DefaultEndpoints, maxOutputTokens, UpstreamPollTimeout())
+	requestTimeout := time.Duration(configuration.RequestTimeoutSeconds) * time.Second
+	pollTimeout := time.Duration(configuration.UpstreamPollTimeoutSeconds) * time.Second
+	openAIClient := NewOpenAIClient(HTTPClient, configuration.Endpoints, requestTimeout, configuration.MaxOutputTokens, pollTimeout)
 	for workerIndex := 0; workerIndex < configuration.WorkerCount; workerIndex++ {
 		go func() {
 			for pending := range taskQueue {
@@ -74,7 +79,7 @@ func BuildRouter(configuration Configuration, structuredLogger *zap.SugaredLogge
 	}
 
 	router.Use(gin.Recovery(), secretMiddleware(configuration.ServiceSecret, structuredLogger))
-	router.GET(rootPath, chatHandler(taskQueue, configuration.SystemPrompt, validator, structuredLogger))
+	router.GET(rootPath, chatHandler(taskQueue, configuration.SystemPrompt, validator, requestTimeout, structuredLogger))
 	return router, nil
 }
 
@@ -88,7 +93,7 @@ func Serve(configuration Configuration, structuredLogger *zap.SugaredLogger) err
 }
 
 // chatHandler returns a handler that forwards requests to the task queue.
-func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validator *modelValidator, structuredLogger *zap.SugaredLogger) gin.HandlerFunc {
+func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validator *modelValidator, requestTimeout time.Duration, structuredLogger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(ginContext *gin.Context) {
 		userPrompt := ginContext.Query(queryParameterPrompt)
 		if userPrompt == constants.EmptyString {

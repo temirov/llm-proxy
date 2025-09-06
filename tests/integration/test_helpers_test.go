@@ -118,11 +118,12 @@ func newOpenAIServer(testingInstance *testing.T, responseText string, captureTar
 // newIntegrationServer builds the application server pointing at the stub OpenAI server.
 func newIntegrationServer(testingInstance *testing.T, openAIServer *httptest.Server) *httptest.Server {
 	testingInstance.Helper()
-	proxy.DefaultEndpoints.SetModelsURL(openAIServer.URL + integrationModelsPath)
-	proxy.DefaultEndpoints.SetResponsesURL(openAIServer.URL + integrationResponsesPath)
+	endpoints := proxy.NewEndpoints()
+	endpoints.SetModelsURL(openAIServer.URL + integrationModelsPath)
+	endpoints.SetResponsesURL(openAIServer.URL + integrationResponsesPath)
+	originalClient := proxy.HTTPClient
 	proxy.HTTPClient = openAIServer.Client()
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetModelsURL() })
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
+	testingInstance.Cleanup(func() { proxy.HTTPClient = originalClient })
 	loggerInstance, _ := zap.NewDevelopment()
 	testingInstance.Cleanup(func() { _ = loggerInstance.Sync() })
 	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
@@ -131,6 +132,7 @@ func newIntegrationServer(testingInstance *testing.T, openAIServer *httptest.Ser
 		LogLevel:      logLevelDebug,
 		WorkerCount:   1,
 		QueueSize:     4,
+		Endpoints:     endpoints,
 	}, loggerInstance.Sugar())
 	if buildRouterError != nil {
 		testingInstance.Fatalf(buildRouterErrorFormat, buildRouterError)
@@ -141,23 +143,23 @@ func newIntegrationServer(testingInstance *testing.T, openAIServer *httptest.Ser
 }
 
 // makeHTTPClient returns a stub HTTP client capturing payloads and returning canned responses.
-func makeHTTPClient(testingInstance *testing.T, wantWebSearch bool) (*http.Client, *map[string]any) {
+func makeHTTPClient(testingInstance *testing.T, wantWebSearch bool, endpoints *proxy.Endpoints) (*http.Client, *map[string]any) {
 	testingInstance.Helper()
 	var captured map[string]any
 	return &http.Client{
 		Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
 			switch {
-			case httpRequest.URL.String() == proxy.DefaultEndpoints.GetModelsURL():
+			case httpRequest.URL.String() == endpoints.GetModelsURL():
 				body := availableModelsBody
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
-			case strings.HasPrefix(httpRequest.URL.String(), proxy.DefaultEndpoints.GetModelsURL()+"/"):
+			case strings.HasPrefix(httpRequest.URL.String(), endpoints.GetModelsURL()+"/"):
 				modelID := strings.TrimPrefix(httpRequest.URL.Path, integrationModelsPath+"/")
 				metadata := metadataEmpty
 				if modelID == proxy.ModelNameGPT41 {
 					metadata = metadataTemperatureTools
 				}
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadata)), Header: make(http.Header)}, nil
-			case httpRequest.URL.String() == proxy.DefaultEndpoints.GetResponsesURL():
+			case httpRequest.URL.String() == endpoints.GetResponsesURL():
 				if httpRequest.Body != nil {
 					requestBytes, _ := io.ReadAll(httpRequest.Body)
 					_ = json.Unmarshal(requestBytes, &captured)
@@ -186,11 +188,13 @@ func newLogger(testingInstance *testing.T) *zap.SugaredLogger {
 }
 
 // configureProxy sets URLs and the HTTP client for proxy operations.
-func configureProxy(testingInstance *testing.T, client *http.Client) {
+func configureProxy(testingInstance *testing.T, client *http.Client, endpoints *proxy.Endpoints) {
 	testingInstance.Helper()
+	previousClient := proxy.HTTPClient
 	proxy.HTTPClient = client
-	proxy.DefaultEndpoints.SetModelsURL(mockModelsURL)
-	proxy.DefaultEndpoints.SetResponsesURL(mockResponsesURL)
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetModelsURL() })
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
+	testingInstance.Cleanup(func() { proxy.HTTPClient = previousClient })
+	endpoints.SetModelsURL(mockModelsURL)
+	endpoints.SetResponsesURL(mockResponsesURL)
+	testingInstance.Cleanup(func() { endpoints.ResetModelsURL() })
+	testingInstance.Cleanup(func() { endpoints.ResetResponsesURL() })
 }
