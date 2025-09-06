@@ -267,18 +267,17 @@ func startSynthesisContinuation(openAIKey string, previousResponseID string, mod
 	}
 
 	payload := map[string]any{
-		"model":                modelIdentifier,
-		"previous_response_id": previousResponseID,
-		"tool_choice":          "none", // forbid more tool calls; force synthesis
-		"input":                instruction,
-		"max_output_tokens":    outTokens,
-		"reasoning": map[string]any{
-			"effort": "minimal",
+		keyModel:              modelIdentifier,
+		keyPreviousResponseID: previousResponseID,
+		keyToolChoice:         toolChoiceNone,
+		keyInput:              instruction,
+		keyMaxOutputTokens:    outTokens,
+		keyReasoning: map[string]any{
+			keyEffort: reasoningEffortMinimal,
 		},
-		// (Optional) You can also include a text format hint; harmless if ignored by the API.
-		"text": map[string]any{
-			"format":    map[string]any{"type": "text"},
-			"verbosity": "low",
+		keyText: map[string]any{
+			keyFormat:    map[string]any{keyType: typeText},
+			keyVerbosity: verbosityLow,
 		},
 	}
 	payloadBytes, _ := json.Marshal(payload)

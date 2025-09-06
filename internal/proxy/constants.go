@@ -50,6 +50,10 @@ const (
 	errorQueueFull = "request queue full"
 
 	toolTypeWebSearch = "web_search"
+	// toolChoiceNone instructs the upstream model not to invoke any tools.
+	toolChoiceNone = "none"
+	// reasoningEffortMinimal denotes a minimal reasoning effort level.
+	reasoningEffortMinimal = "minimal"
 	// reasoningEffortMedium denotes a medium reasoning effort level.
 	reasoningEffortMedium = "medium"
 
@@ -80,6 +84,21 @@ const (
 	keyToolChoice      = "tool_choice"
 	keyReasoning       = "reasoning"
 	keyAuto            = "auto"
+	// keyEffort identifies the reasoning effort field in request payloads.
+	keyEffort = "effort"
+
+	// keyPreviousResponseID identifies the prior response in a continuation request.
+	keyPreviousResponseID = "previous_response_id"
+	// keyText identifies a text format hint in request payloads.
+	keyText = "text"
+	// keyFormat indicates the desired format for a text hint.
+	keyFormat = "format"
+	// keyVerbosity specifies the verbosity level for a text hint.
+	keyVerbosity = "verbosity"
+	// typeText identifies plain text formatting.
+	typeText = "text"
+	// verbosityLow specifies a low verbosity setting.
+	verbosityLow = "low"
 
 	jsonFieldID                   = "id"
 	jsonFieldStatus               = "status"
