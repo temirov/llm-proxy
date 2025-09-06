@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/temirov/llm-proxy/internal/apperrors"
+	"github.com/temirov/llm-proxy/internal/constants"
 	"github.com/temirov/llm-proxy/internal/proxy"
 	"github.com/temirov/llm-proxy/internal/utils"
 	"go.uber.org/zap"
@@ -98,57 +99,16 @@ var rootCmd = &cobra.Command{
 	Long:    rootCmdLong,
 	Example: rootCmdExample,
 	RunE: func(command *cobra.Command, arguments []string) error {
-		if !command.Flags().Changed(flagServiceSecret) {
-			config.ServiceSecret = strings.TrimSpace(strings.Trim(viper.GetString(keyServiceSecret), quoteCharacters))
-		}
-		if !command.Flags().Changed(flagOpenAIAPIKey) {
-			config.OpenAIKey = strings.TrimSpace(strings.Trim(viper.GetString(keyOpenAIAPIKey), quoteCharacters))
-		}
-		if !command.Flags().Changed(flagPort) {
-			config.Port = viper.GetInt(keyPort)
-		}
-		if config.Port == 0 {
-			config.Port = proxy.DefaultPort
-		}
-		if !command.Flags().Changed(flagLogLevel) {
-			config.LogLevel = viper.GetString(keyLogLevel)
-		}
-		if config.LogLevel == "" {
-			config.LogLevel = proxy.LogLevelInfo
-		}
-		if !command.Flags().Changed(flagSystemPrompt) {
-			config.SystemPrompt = viper.GetString(keySystemPrompt)
-		}
-		if !command.Flags().Changed(flagWorkers) {
-			config.WorkerCount = viper.GetInt(keyWorkers)
-		}
-		if config.WorkerCount == 0 {
-			config.WorkerCount = proxy.DefaultWorkers
-		}
-		if !command.Flags().Changed(flagQueueSize) {
-			config.QueueSize = viper.GetInt(keyQueueSize)
-		}
-		if config.QueueSize == 0 {
-			config.QueueSize = proxy.DefaultQueueSize
-		}
-		if !command.Flags().Changed(flagRequestTimeout) {
-			config.RequestTimeoutSeconds = viper.GetInt(keyRequestTimeoutSeconds)
-		}
-		if config.RequestTimeoutSeconds == 0 {
-			config.RequestTimeoutSeconds = proxy.DefaultRequestTimeoutSeconds
-		}
-		if !command.Flags().Changed(flagUpstreamPollTimeout) {
-			config.UpstreamPollTimeoutSeconds = viper.GetInt(keyUpstreamPollTimeoutSeconds)
-		}
-		if config.UpstreamPollTimeoutSeconds == 0 {
-			config.UpstreamPollTimeoutSeconds = proxy.DefaultUpstreamPollTimeoutSeconds
-		}
-		if !command.Flags().Changed(flagMaxOutputTokens) {
-			config.MaxOutputTokens = viper.GetInt(keyMaxOutputTokens)
-		}
-		if config.MaxOutputTokens == 0 {
-			config.MaxOutputTokens = proxy.DefaultMaxOutputTokens
-		}
+		populateStringConfiguration(command, flagServiceSecret, keyServiceSecret, &config.ServiceSecret, constants.EmptyString, trimSpacesAndQuotes)
+		populateStringConfiguration(command, flagOpenAIAPIKey, keyOpenAIAPIKey, &config.OpenAIKey, constants.EmptyString, trimSpacesAndQuotes)
+		populateIntConfiguration(command, flagPort, keyPort, &config.Port, proxy.DefaultPort)
+		populateStringConfiguration(command, flagLogLevel, keyLogLevel, &config.LogLevel, proxy.LogLevelInfo, identityTransformer)
+		populateStringConfiguration(command, flagSystemPrompt, keySystemPrompt, &config.SystemPrompt, constants.EmptyString, identityTransformer)
+		populateIntConfiguration(command, flagWorkers, keyWorkers, &config.WorkerCount, proxy.DefaultWorkers)
+		populateIntConfiguration(command, flagQueueSize, keyQueueSize, &config.QueueSize, proxy.DefaultQueueSize)
+		populateIntConfiguration(command, flagRequestTimeout, keyRequestTimeoutSeconds, &config.RequestTimeoutSeconds, proxy.DefaultRequestTimeoutSeconds)
+		populateIntConfiguration(command, flagUpstreamPollTimeout, keyUpstreamPollTimeoutSeconds, &config.UpstreamPollTimeoutSeconds, proxy.DefaultUpstreamPollTimeoutSeconds)
+		populateIntConfiguration(command, flagMaxOutputTokens, keyMaxOutputTokens, &config.MaxOutputTokens, proxy.DefaultMaxOutputTokens)
 
 		var logger *zap.Logger
 		var loggerError error
@@ -164,11 +124,11 @@ var rootCmd = &cobra.Command{
 		defer func() { _ = logger.Sync() }()
 		sugar := logger.Sugar()
 
-		if strings.TrimSpace(config.ServiceSecret) == "" {
+		if strings.TrimSpace(config.ServiceSecret) == constants.EmptyString {
 			sugar.Error(messageServiceSecretEmpty)
 			return apperrors.ErrMissingServiceSecret
 		}
-		if strings.TrimSpace(config.OpenAIKey) == "" {
+		if strings.TrimSpace(config.OpenAIKey) == constants.EmptyString {
 			sugar.Error(messageOpenAIAPIKeyEmpty)
 			return apperrors.ErrMissingOpenAIKey
 		}
