@@ -86,18 +86,18 @@ func Serve(configuration Configuration, structuredLogger *zap.SugaredLogger) err
 func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validator *modelValidator, structuredLogger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(ginContext *gin.Context) {
 		userPrompt := ginContext.Query(queryParameterPrompt)
-		if userPrompt == "" {
+		if userPrompt == constants.EmptyString {
 			ginContext.String(http.StatusBadRequest, errorMissingPrompt)
 			return
 		}
 
 		systemPrompt := ginContext.Query(queryParameterSystemPrompt)
-		if systemPrompt == "" {
+		if systemPrompt == constants.EmptyString {
 			systemPrompt = defaultSystemPrompt
 		}
 
 		modelIdentifier := ginContext.Query(queryParameterModel)
-		if modelIdentifier == "" {
+		if modelIdentifier == constants.EmptyString {
 			modelIdentifier = DefaultModel
 		}
 		if verificationError := validator.Verify(modelIdentifier); verificationError != nil {
@@ -107,7 +107,7 @@ func chatHandler(taskQueue chan requestTask, defaultSystemPrompt string, validat
 
 		webSearchQuery := strings.TrimSpace(ginContext.Query(queryParameterWebSearch))
 		webSearchEnabled := false
-		if webSearchQuery != "" {
+		if webSearchQuery != constants.EmptyString {
 			parsedWebSearch, parseError := strconv.ParseBool(webSearchQuery)
 			if parseError != nil {
 				structuredLogger.Warnw(

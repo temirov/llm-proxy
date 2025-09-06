@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/temirov/llm-proxy/internal/apperrors"
+	"github.com/temirov/llm-proxy/internal/constants"
 )
 
 const (
@@ -39,10 +40,10 @@ type Configuration struct {
 
 // validateConfig confirms required settings are present.
 func validateConfig(config Configuration) error {
-	if strings.TrimSpace(config.ServiceSecret) == "" {
+	if strings.TrimSpace(config.ServiceSecret) == constants.EmptyString {
 		return apperrors.ErrMissingServiceSecret
 	}
-	if strings.TrimSpace(config.OpenAIKey) == "" {
+	if strings.TrimSpace(config.OpenAIKey) == constants.EmptyString {
 		return apperrors.ErrMissingOpenAIKey
 	}
 	return nil

@@ -3,11 +3,12 @@ package utils_test
 import (
 	"testing"
 
+	"github.com/temirov/llm-proxy/internal/constants"
 	"github.com/temirov/llm-proxy/internal/utils"
 )
 
 const (
-	emptyStringValue      = ""
+	emptyStringValue      = constants.EmptyString
 	whitespaceStringValue = " \t\n"
 	wordStringValue       = "hello"
 	spacedWordStringValue = "  hello  "
