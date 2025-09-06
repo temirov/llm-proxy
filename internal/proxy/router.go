@@ -27,29 +27,13 @@ type requestTask struct {
 	reply            chan result
 }
 
-// normalizeAndApplyTunables ensures configuration tunables have sensible defaults and updates package-level variables.
-func normalizeAndApplyTunables(configuration *Configuration) {
-	if configuration.RequestTimeoutSeconds <= 0 {
-		configuration.RequestTimeoutSeconds = DefaultRequestTimeoutSeconds
-	}
-	if configuration.UpstreamPollTimeoutSeconds <= 0 {
-		configuration.UpstreamPollTimeoutSeconds = DefaultUpstreamPollTimeoutSeconds
-	}
-	if configuration.MaxOutputTokens <= 0 {
-		configuration.MaxOutputTokens = DefaultMaxOutputTokens
-	}
-	requestTimeout = time.Duration(configuration.RequestTimeoutSeconds) * time.Second
-	upstreamPollTimeout = time.Duration(configuration.UpstreamPollTimeoutSeconds) * time.Second
-	maxOutputTokens = configuration.MaxOutputTokens
-}
-
 // BuildRouter constructs the HTTP router used by the proxy. configuration supplies queue sizes, worker counts, timeout values, API credentials and other settings. structuredLogger records structured log messages during routing.
 func BuildRouter(configuration Configuration, structuredLogger *zap.SugaredLogger) (*gin.Engine, error) {
 	if validationError := validateConfig(configuration); validationError != nil {
 		return nil, validationError
 	}
 
-	normalizeAndApplyTunables(&configuration)
+	configuration.ApplyTunables()
 
 	validator, validatorError := newModelValidator(configuration.OpenAIKey, structuredLogger)
 	if validatorError != nil {
