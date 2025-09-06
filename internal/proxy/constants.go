@@ -36,6 +36,7 @@ const (
 	errorOpenAIAPI          = "OpenAI API error"
 	errorOpenAIAPINoText    = "OpenAI API error (no text)"
 	errorOpenAIFailedStatus = "OpenAI API error (failed status)"
+	errorOpenAIContinue     = "OpenAI API continue error"
 	// errorUpstreamIncomplete indicates that the upstream provider returned an incomplete response.
 	errorUpstreamIncomplete    = "OpenAI API error (incomplete response)"
 	errorOpenAIModelValidation = "OpenAI model validation error"
@@ -47,8 +48,9 @@ const (
 
 	toolTypeWebSearch = "web_search"
 
-	keyRole            = "role"
-	keyUser            = "user"
+	keyRole = "role"
+	keyUser = "user"
+
 	keySystem          = "system"
 	keyAssistant       = "assistant"
 	keyContent         = "content"
@@ -59,6 +61,7 @@ const (
 	keyTools           = "tools"
 	keyType            = "type"
 	keyToolChoice      = "tool_choice"
+	keyReasoning       = "reasoning"
 	keyAuto            = "auto"
 
 	jsonFieldID                   = "id"
@@ -99,6 +102,7 @@ const (
 	logEventOpenAIModelsListError         = "OpenAI models list error"
 	logEventOpenAIModelCapabilitiesError  = "OpenAI model capabilities error"
 	logEventOpenAIPollError               = "OpenAI poll error"
+	logEventOpenAIContinueError           = "OpenAI continue error"
 	logEventParseOpenAIResponseFailed     = "parse OpenAI response failed"
 	logEventForbiddenRequest              = "forbidden request"
 	logEventRequestReceived               = "request received"

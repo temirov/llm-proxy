@@ -74,7 +74,7 @@ func BuildRequestPayload(modelIdentifier string, combinedPrompt string, webSearc
 		if webSearchEnabled {
 			p.Tools = []Tool{{Type: toolTypeWebSearch}}
 			p.ToolChoice = keyAuto
-			p.Reasoning = &Reasoning{Effort: "low"}
+			p.Reasoning = &Reasoning{Effort: "medium"}
 		}
 		return p
 	case ModelNameGPT4oMini:
@@ -129,7 +129,7 @@ var (
 	// SchemaGPT5Mini defines allowed payload fields for the GPT-5-mini model.
 	SchemaGPT5Mini = ModelPayloadSchema{AllowedRequestFields: []string{keyModel, keyInput, keyMaxOutputTokens}}
 	// SchemaGPT5 defines allowed payload fields for the GPT-5 model.
-	SchemaGPT5 = ModelPayloadSchema{AllowedRequestFields: []string{keyModel, keyInput, keyMaxOutputTokens, keyTools, keyToolChoice}}
+	SchemaGPT5 = ModelPayloadSchema{AllowedRequestFields: []string{keyModel, keyInput, keyMaxOutputTokens, keyTools, keyToolChoice, keyReasoning}}
 )
 
 // modelPayloadSchemas associates model identifiers with their payload schemas.

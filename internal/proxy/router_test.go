@@ -18,8 +18,8 @@ type chatHandlerScenario struct {
 
 // TestChatHandlerValidatesModel verifies model validation and a successful request flow.
 func TestChatHandlerValidatesModel(t *testing.T) {
-	// Corrected to use "output_text" to match the parser's expectation.
-	const finalResponse = `{"status":"completed", "output":[{"type":"message", "role":"assistant", "content":[{"type":"output_text","text":"ok"}]}]}`
+	// Corrected to use "text" to match the parser's expectation.
+	const finalResponse = `{"status":"completed", "output":[{"type":"message", "role":"assistant", "content":[{"type":"text","text":"ok"}]}]}`
 
 	testScenarios := []chatHandlerScenario{
 		{

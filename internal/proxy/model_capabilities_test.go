@@ -18,7 +18,7 @@ func TestResolveModelPayloadSchema(testFramework *testing.T) {
 		{proxy.ModelNameGPT4o, []string{"model", "input", "max_output_tokens", "temperature", "tools", "tool_choice"}},
 		{proxy.ModelNameGPT41, []string{"model", "input", "max_output_tokens", "temperature", "tools", "tool_choice"}},
 		{proxy.ModelNameGPT5Mini, []string{"model", "input", "max_output_tokens"}},
-		{proxy.ModelNameGPT5, []string{"model", "input", "max_output_tokens", "tools", "tool_choice"}},
+		{proxy.ModelNameGPT5, []string{"model", "input", "max_output_tokens", "tools", "tool_choice", "reasoning"}},
 	}
 	for _, testCase := range testCases {
 		payloadSchema := proxy.ResolveModelPayloadSchema(testCase.modelIdentifier)

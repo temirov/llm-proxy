@@ -83,7 +83,7 @@ func Test_ResponseShapes(t *testing.T) {
 		},
 		{
 			name:          "message object in output array",
-			finalResponse: `{"status":"completed", "output":[{"type":"message", "role":"assistant", "content":[{"type":"output_text", "text":"Message Answer"}]}]}`,
+			finalResponse: `{"status":"completed", "output":[{"type":"message", "role":"assistant", "content":[{"type":"text", "text":"Message Answer"}]}]}`,
 			wantBody:      "Message Answer",
 		},
 		{
