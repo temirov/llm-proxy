@@ -1,7 +1,8 @@
 package proxy
 
 import (
-	"crypto/subtle"
+	"crypto/hmac"
+	"crypto/sha256"
 	"net/http"
 	"net/url"
 	"strings"
@@ -54,12 +55,10 @@ func requestResponseLogger(structuredLogger *zap.SugaredLogger) gin.HandlerFunc 
 // secretMiddleware enforces the shared secret through a constant-time comparison of the `key` query parameter.
 func secretMiddleware(sharedSecret string, structuredLogger *zap.SugaredLogger) gin.HandlerFunc {
 	normalizedSecret := strings.TrimSpace(sharedSecret)
-	expectedSecretBytes := []byte(normalizedSecret)
 	expectedSecretFingerprint := utils.Fingerprint(normalizedSecret)
 	return func(ginContext *gin.Context) {
 		presentedKey := strings.TrimSpace(ginContext.Query(queryParameterKey))
-		presentedKeyBytes := []byte(presentedKey)
-		if !constantTimeEquals(expectedSecretBytes, presentedKeyBytes) {
+		if !constantTimeEquals(normalizedSecret, presentedKey) {
 			structuredLogger.Warnw(
 				logEventForbiddenRequest,
 				logFieldExpectedFingerprint, expectedSecretFingerprint,
@@ -72,12 +71,9 @@ func secretMiddleware(sharedSecret string, structuredLogger *zap.SugaredLogger) 
 	}
 }
 
-// constantTimeEquals compares two byte slices in constant time to reduce side-channel signal.
-func constantTimeEquals(firstValue []byte, secondValue []byte) bool {
-	if len(firstValue) != len(secondValue) {
-		_ = subtle.ConstantTimeCompare(firstValue, firstValue)
-		_ = subtle.ConstantTimeCompare(secondValue, firstValue)
-		return false
-	}
-	return subtle.ConstantTimeCompare(firstValue, secondValue) == 1
+// constantTimeEquals compares two string values using HMAC equality on SHA-256 hashes.
+func constantTimeEquals(firstValue string, secondValue string) bool {
+	firstDigest := sha256.Sum256([]byte(firstValue))
+	secondDigest := sha256.Sum256([]byte(secondValue))
+	return hmac.Equal(firstDigest[:], secondDigest[:])
 }
