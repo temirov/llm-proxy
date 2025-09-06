@@ -9,16 +9,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
+    env:
+      CHANGELOG_FILE: CHANGELOG.md
+      RELEASE_NOTES_FILE: release_notes.md
     steps:
       - uses: actions/checkout@v3
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.24'
-      - name: Run tests
-        run: go test ./...
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
       - name: Log in to registry
@@ -36,3 +33,18 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}:latest
+      - name: Extract release notes
+        run: |
+          release_tag="${{ github.ref_name }}"
+          awk -v tag="$release_tag" '
+            $0 ~ "^## \\[" tag "\\]" {flag=1; next}
+            flag && /^## \\[/ {flag=0}
+            flag
+          ' "$CHANGELOG_FILE" > "$RELEASE_NOTES_FILE"
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Release ${{ github.ref_name }}"
+          body_path: ${{ env.RELEASE_NOTES_FILE }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
