@@ -65,12 +65,6 @@ const (
 	// fallbackFinalAnswerFormat formats a message when the model does not provide a final answer.
 	fallbackFinalAnswerFormat = "Model did not provide a final answer. Last web search: \"%s\""
 
-	keyRole = "role"
-	keyUser = "user"
-
-	keySystem          = "system"
-	keyAssistant       = "assistant"
-	keyContent         = "content"
 	keyModel           = "model"
 	keyInput           = "input"
 	keyTemperature     = "temperature"
