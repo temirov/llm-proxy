@@ -39,7 +39,7 @@ func BuildRouter(configuration Configuration, structuredLogger *zap.SugaredLogge
 
 	configuration.ApplyTunables()
 
-	validator, validatorError := newModelValidator(configuration.OpenAIKey, structuredLogger)
+	validator, validatorError := newModelValidator()
 	if validatorError != nil {
 		return nil, validatorError
 	}
