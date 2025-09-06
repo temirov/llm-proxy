@@ -352,7 +352,7 @@ func fetchResponseByID(deadline time.Time, openAIKey string, responseIdentifier 
 	}
 
 	structuredLogger.Debugw(
-		"OpenAI poll response body",
+		logEventOpenAIPollResponseBody,
 		logFieldID, responseIdentifier,
 		logFieldResponseBody, string(responseBytes),
 	)
