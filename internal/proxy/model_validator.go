@@ -3,8 +3,6 @@ package proxy
 import (
 	"errors"
 	"fmt"
-
-	"go.uber.org/zap"
 )
 
 // errUnknownModelFormat specifies the format string for wrapping an unknown model error.
@@ -16,10 +14,8 @@ var ErrUnknownModel = errors.New(errorUnknownModel)
 // modelValidator validates model identifiers using the static payload schema table.
 type modelValidator struct{}
 
-// newModelValidator creates a modelValidator. The parameters are retained for signature compatibility.
-func newModelValidator(openAIKey string, structuredLogger *zap.SugaredLogger) (*modelValidator, error) {
-	_ = openAIKey
-	_ = structuredLogger
+// newModelValidator creates a modelValidator.
+func newModelValidator() (*modelValidator, error) {
 	return &modelValidator{}, nil
 }
 
