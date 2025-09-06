@@ -52,3 +52,19 @@ var requestTimeout = 30 * time.Second
 
 // ErrUpstreamIncomplete indicates that the upstream provider returned an incomplete response before the poll deadline.
 var ErrUpstreamIncomplete = errors.New(errorUpstreamIncomplete)
+
+// ApplyTunables ensures tunable configuration values have sensible defaults and updates package-level parameters.
+func (configuration *Configuration) ApplyTunables() {
+	if configuration.RequestTimeoutSeconds <= 0 {
+		configuration.RequestTimeoutSeconds = DefaultRequestTimeoutSeconds
+	}
+	if configuration.UpstreamPollTimeoutSeconds <= 0 {
+		configuration.UpstreamPollTimeoutSeconds = DefaultUpstreamPollTimeoutSeconds
+	}
+	if configuration.MaxOutputTokens <= 0 {
+		configuration.MaxOutputTokens = DefaultMaxOutputTokens
+	}
+	requestTimeout = time.Duration(configuration.RequestTimeoutSeconds) * time.Second
+	SetUpstreamPollTimeout(time.Duration(configuration.UpstreamPollTimeoutSeconds) * time.Second)
+	maxOutputTokens = configuration.MaxOutputTokens
+}
