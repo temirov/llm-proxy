@@ -8,7 +8,7 @@ import (
 
 // IsBlank reports whether a string is empty or whitespace-only.
 func IsBlank(value string) bool {
-	return strings.TrimSpace(value) == ""
+	return strings.TrimSpace(value) == constants.EmptyString
 }
 
 // HasAnyPrefix reports whether value starts with any of the given prefixes (case-insensitive).
