@@ -61,40 +61,40 @@ func BuildRequestPayload(modelIdentifier string, combinedPrompt string, webSearc
 	// Declaratively choose the payload structure based on the model.
 	switch modelIdentifier {
 	case ModelNameGPT4o, ModelNameGPT41:
-		p := requestPayloadFull{requestPayloadBase: base}
-		temp := defaultTemperature
-		p.Temperature = &temp
+		payload := requestPayloadFull{requestPayloadBase: base}
+		temperature := defaultTemperature
+		payload.Temperature = &temperature
 		if webSearchEnabled {
-			p.Tools = []Tool{{Type: toolTypeWebSearch}}
-			p.ToolChoice = keyAuto
+			payload.Tools = []Tool{{Type: toolTypeWebSearch}}
+			payload.ToolChoice = keyAuto
 		}
-		return p
+		return payload
 	case ModelNameGPT5:
-		p := requestPayloadWithTools{requestPayloadBase: base}
+		payload := requestPayloadWithTools{requestPayloadBase: base}
 		if webSearchEnabled {
-			p.Tools = []Tool{{Type: toolTypeWebSearch}}
-			p.ToolChoice = keyAuto
-			p.Reasoning = &Reasoning{Effort: "medium"}
+			payload.Tools = []Tool{{Type: toolTypeWebSearch}}
+			payload.ToolChoice = keyAuto
+			payload.Reasoning = &Reasoning{Effort: reasoningEffortMedium}
 		}
-		return p
+		return payload
 	case ModelNameGPT4oMini:
-		p := requestPayloadWithTemperature{requestPayloadBase: base}
-		temp := defaultTemperature
-		p.Temperature = &temp
-		return p
+		payload := requestPayloadWithTemperature{requestPayloadBase: base}
+		temperature := defaultTemperature
+		payload.Temperature = &temperature
+		return payload
 	case ModelNameGPT5Mini:
 		// This model has no optional parameters, so we use the base struct directly.
 		return base
 	default:
 		// Fallback for any unknown models, assuming full capabilities as a sensible default.
-		p := requestPayloadFull{requestPayloadBase: base}
-		temp := defaultTemperature
-		p.Temperature = &temp
+		payload := requestPayloadFull{requestPayloadBase: base}
+		temperature := defaultTemperature
+		payload.Temperature = &temperature
 		if webSearchEnabled {
-			p.Tools = []Tool{{Type: toolTypeWebSearch}}
-			p.ToolChoice = keyAuto
+			payload.Tools = []Tool{{Type: toolTypeWebSearch}}
+			payload.ToolChoice = keyAuto
 		}
-		return p
+		return payload
 	}
 }
 

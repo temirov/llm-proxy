@@ -50,6 +50,8 @@ const (
 	errorQueueFull = "request queue full"
 
 	toolTypeWebSearch = "web_search"
+	// reasoningEffortMedium denotes a medium reasoning effort level.
+	reasoningEffortMedium = "medium"
 
 	// responseTypeMessage identifies a message output item in the upstream response.
 	responseTypeMessage = "message"
