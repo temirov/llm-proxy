@@ -96,11 +96,10 @@ const (
 	textFormatType        = "text"
 	verbosityLow          = "low"
 
-	jsonFieldID                   = "id"
-	jsonFieldStatus               = "status"
-	jsonFieldOutputText           = "output_text"
-	jsonFieldResponse             = "response"
-	jsonFieldAllowedRequestFields = "allowed_request_fields"
+	jsonFieldID         = "id"
+	jsonFieldStatus     = "status"
+	jsonFieldOutputText = "output_text"
+	jsonFieldResponse   = "response"
 
 	statusCompleted = "completed"
 	statusSucceeded = "succeeded"
