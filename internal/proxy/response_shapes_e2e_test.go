@@ -36,8 +36,10 @@ func withStubbedProxy(t *testing.T, initialResponse, finalResponse string) http.
 	}))
 	t.Cleanup(server.Close)
 
-	proxy.DefaultEndpoints.SetResponsesURL(server.URL)
-	t.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
+	endpointConfiguration := proxy.NewEndpoints()
+	endpointConfiguration.SetResponsesURL(server.URL)
+	proxy.HTTPClient = server.Client()
+	t.Cleanup(func() { proxy.HTTPClient = http.DefaultClient })
 
 	logger, _ := zap.NewDevelopment()
 	t.Cleanup(func() { _ = logger.Sync() })
@@ -49,6 +51,7 @@ func withStubbedProxy(t *testing.T, initialResponse, finalResponse string) http.
 		QueueSize:                  1,
 		RequestTimeoutSeconds:      TestTimeout,
 		UpstreamPollTimeoutSeconds: TestTimeout,
+		Endpoints:                  endpointConfiguration,
 	}, logger.Sugar())
 	if err != nil {
 		t.Fatalf("BuildRouter error: %v", err)

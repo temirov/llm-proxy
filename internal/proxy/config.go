@@ -36,6 +36,8 @@ type Configuration struct {
 	RequestTimeoutSeconds      int
 	UpstreamPollTimeoutSeconds int
 	MaxOutputTokens            int
+	// Endpoints defines the URLs for upstream API requests.
+	Endpoints *Endpoints
 }
 
 // validateConfig confirms required settings are present.

@@ -30,16 +30,16 @@ func makeDelayedHTTPClient(testingInstance *testing.T) *http.Client {
 	testingInstance.Helper()
 	return &http.Client{Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
 		switch {
-		case httpRequest.URL.String() == proxy.DefaultEndpoints.GetModelsURL():
+		case httpRequest.URL.String() == mockModelsURL:
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(availableModelsBody)), Header: make(http.Header)}, nil
-		case strings.HasPrefix(httpRequest.URL.String(), proxy.DefaultEndpoints.GetModelsURL()+"/"):
+		case strings.HasPrefix(httpRequest.URL.String(), mockModelsURL+"/"):
 			modelIdentifier := strings.TrimPrefix(httpRequest.URL.Path, integrationModelsPath+"/")
 			metadata := metadataEmpty
 			if modelIdentifier == proxy.ModelNameGPT41 {
 				metadata = metadataTemperatureTools
 			}
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadata)), Header: make(http.Header)}, nil
-		case httpRequest.URL.String() == proxy.DefaultEndpoints.GetResponsesURL():
+		case httpRequest.URL.String() == mockResponsesURL:
 			time.Sleep(queueRequestDelay)
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"output_text":"` + integrationOKBody + `"}`)), Header: make(http.Header)}, nil
 		default:
@@ -53,7 +53,7 @@ func makeDelayedHTTPClient(testingInstance *testing.T) *http.Client {
 func TestIntegrationHighLoadQueue(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
 	client := makeDelayedHTTPClient(testingInstance)
-	configureProxy(testingInstance, client)
+	endpointConfiguration := configureProxy(testingInstance, client)
 	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret:         serviceSecretValue,
 		OpenAIKey:             openAIKeyValue,
@@ -61,6 +61,7 @@ func TestIntegrationHighLoadQueue(testingInstance *testing.T) {
 		WorkerCount:           singleWorkerCount,
 		QueueSize:             proxy.DefaultQueueSize,
 		RequestTimeoutSeconds: requestTimeoutSeconds,
+		Endpoints:             endpointConfiguration,
 	}, newLogger(testingInstance))
 	if buildRouterError != nil {
 		testingInstance.Fatalf(buildRouterFailedFormat, buildRouterError)

@@ -20,7 +20,7 @@ func (roundTripper roundTripperFunc) RoundTrip(httpRequest *http.Request) (*http
 }
 
 // newRouterWithStubbedOpenAI returns a router that uses a stubbed OpenAI backend.
-func newRouterWithStubbedOpenAI(testingInstance *testing.T, modelsBody, responsesBody string, workerCount, queueSize, requestTimeoutSeconds int) *gin.Engine {
+func newRouterWithStubbedOpenAI(testingInstance *testing.T, endpointConfiguration *proxy.Endpoints, modelsBody, responsesBody string, workerCount, queueSize, requestTimeoutSeconds int) *gin.Engine {
 	testingInstance.Helper()
 
 	originalClient := proxy.HTTPClient
@@ -29,13 +29,13 @@ func newRouterWithStubbedOpenAI(testingInstance *testing.T, modelsBody, response
 	proxy.HTTPClient = &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 			switch request.URL.String() {
-			case proxy.DefaultEndpoints.GetModelsURL():
+			case endpointConfiguration.GetModelsURL():
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Body:       io.NopCloser(strings.NewReader(modelsBody)),
 					Header:     make(http.Header),
 				}, nil
-			case proxy.DefaultEndpoints.GetResponsesURL():
+			case endpointConfiguration.GetResponsesURL():
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Body:       io.NopCloser(strings.NewReader(responsesBody)),
@@ -61,6 +61,7 @@ func newRouterWithStubbedOpenAI(testingInstance *testing.T, modelsBody, response
 		WorkerCount:           workerCount,
 		QueueSize:             queueSize,
 		RequestTimeoutSeconds: requestTimeoutSeconds,
+		Endpoints:             endpointConfiguration,
 	}, logger.Sugar())
 	if buildError != nil {
 		testingInstance.Fatalf("BuildRouter error: %v", buildError)
@@ -71,14 +72,13 @@ func newRouterWithStubbedOpenAI(testingInstance *testing.T, modelsBody, response
 // TestEndpoint_Empty200TreatedAsError ensures that empty successful responses are treated as errors.
 func TestEndpoint_Empty200TreatedAsError(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
-
-	proxy.DefaultEndpoints.SetModelsURL("https://mock.local/v1/models")
-	proxy.DefaultEndpoints.SetResponsesURL("https://mock.local/v1/responses")
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetModelsURL() })
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
+	endpointConfiguration := proxy.NewEndpoints()
+	endpointConfiguration.SetModelsURL("https://mock.local/v1/models")
+	endpointConfiguration.SetResponsesURL("https://mock.local/v1/responses")
 
 	router := newRouterWithStubbedOpenAI(
 		testingInstance,
+		endpointConfiguration,
 		`{"data":[{"id":"`+proxy.ModelNameGPT41+`"}]}`,
 		`{"output":[]}`,
 		1,
@@ -104,14 +104,13 @@ func TestEndpoint_Empty200TreatedAsError(testingInstance *testing.T) {
 // TestEndpoint_RespectsAcceptHeaderCSV validates CSV responses when the Accept header requests text/csv.
 func TestEndpoint_RespectsAcceptHeaderCSV(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
-
-	proxy.DefaultEndpoints.SetModelsURL("https://mock.local/v1/models")
-	proxy.DefaultEndpoints.SetResponsesURL("https://mock.local/v1/responses")
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetModelsURL() })
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
+	endpointConfiguration := proxy.NewEndpoints()
+	endpointConfiguration.SetModelsURL("https://mock.local/v1/models")
+	endpointConfiguration.SetResponsesURL("https://mock.local/v1/responses")
 
 	router := newRouterWithStubbedOpenAI(
 		testingInstance,
+		endpointConfiguration,
 		`{"data":[{"id":"`+proxy.ModelNameGPT41+`"}]}`,
 		`{"output_text":"Hello, world!"}`,
 		1,
@@ -142,14 +141,13 @@ func TestEndpoint_RespectsAcceptHeaderCSV(testingInstance *testing.T) {
 // TestEndpoint_ReturnsServiceUnavailableWhenQueueFull confirms that a full queue results in an HTTP 503 status code.
 func TestEndpoint_ReturnsServiceUnavailableWhenQueueFull(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
-
-	proxy.DefaultEndpoints.SetModelsURL("https://mock.local/v1/models")
-	proxy.DefaultEndpoints.SetResponsesURL("https://mock.local/v1/responses")
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetModelsURL() })
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
+	endpointConfiguration := proxy.NewEndpoints()
+	endpointConfiguration.SetModelsURL("https://mock.local/v1/models")
+	endpointConfiguration.SetResponsesURL("https://mock.local/v1/responses")
 
 	router := newRouterWithStubbedOpenAI(
 		testingInstance,
+		endpointConfiguration,
 		`{"data":[{"id":"`+proxy.ModelNameGPT41+`"}]}`,
 		`{"output_text":"queued"}`,
 		0,

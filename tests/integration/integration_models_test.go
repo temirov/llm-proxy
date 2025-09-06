@@ -22,13 +22,14 @@ func TestIntegrationModelSpecSuppression(testingInstance *testing.T) {
 	for _, testCase := range testCases {
 		testingInstance.Run(testCase.name, func(subTest *testing.T) {
 			client, captured := makeHTTPClient(subTest, true)
-			configureProxy(subTest, client)
+			endpointConfiguration := configureProxy(subTest, client)
 			router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 				ServiceSecret: serviceSecretValue,
 				OpenAIKey:     openAIKeyValue,
 				LogLevel:      logLevelDebug,
 				WorkerCount:   1,
 				QueueSize:     8,
+				Endpoints:     endpointConfiguration,
 			}, newLogger(subTest))
 			if buildRouterError != nil {
 				subTest.Fatalf(buildRouterFailedFormat, buildRouterError)
@@ -70,13 +71,14 @@ func TestIntegrationModelSpecSuppression(testingInstance *testing.T) {
 func TestIntegrationGPT5TemperatureSuppression(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
 	client, captured := makeHTTPClient(testingInstance, true)
-	configureProxy(testingInstance, client)
+	endpointConfiguration := configureProxy(testingInstance, client)
 	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: serviceSecretValue,
 		OpenAIKey:     openAIKeyValue,
 		LogLevel:      logLevelDebug,
 		WorkerCount:   1,
 		QueueSize:     8,
+		Endpoints:     endpointConfiguration,
 	}, newLogger(testingInstance))
 	if buildRouterError != nil {
 		testingInstance.Fatalf(buildRouterFailedFormat, buildRouterError)

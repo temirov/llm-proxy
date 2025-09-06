@@ -35,12 +35,12 @@ func newAdaptiveClient(testingInstance *testing.T, mode string) *http.Client {
 	return &http.Client{
 		Transport: adaptiveRoundTripper(func(httpRequest *http.Request) (*http.Response, error) {
 			switch {
-			case httpRequest.URL.String() == proxy.DefaultEndpoints.GetModelsURL():
+			case httpRequest.URL.String() == mockModelsURL:
 				body := `{"data":[{"id":"` + proxy.ModelNameGPT5Mini + `"}]}`
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
-			case strings.HasPrefix(httpRequest.URL.String(), proxy.DefaultEndpoints.GetModelsURL()+"/"):
+			case strings.HasPrefix(httpRequest.URL.String(), mockModelsURL+"/"):
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadataEmpty)), Header: make(http.Header)}, nil
-			case httpRequest.URL.String() == proxy.DefaultEndpoints.GetResponsesURL():
+			case httpRequest.URL.String() == mockResponsesURL:
 				buf, _ := io.ReadAll(httpRequest.Body)
 				httpRequest.Body.Close()
 				payload := string(buf)
@@ -75,10 +75,10 @@ func newAdaptiveRouter(testingInstance *testing.T, mode string) *gin.Engine {
 	testingInstance.Helper()
 	gin.SetMode(gin.TestMode)
 	proxy.HTTPClient = newAdaptiveClient(testingInstance, mode)
-	proxy.DefaultEndpoints.SetModelsURL(mockModelsURL)
-	proxy.DefaultEndpoints.SetResponsesURL(mockResponsesURL)
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetModelsURL() })
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
+	testingInstance.Cleanup(func() { proxy.HTTPClient = http.DefaultClient })
+	endpointConfiguration := proxy.NewEndpoints()
+	endpointConfiguration.SetModelsURL(mockModelsURL)
+	endpointConfiguration.SetResponsesURL(mockResponsesURL)
 	logger, _ := zap.NewDevelopment()
 	testingInstance.Cleanup(func() { _ = logger.Sync() })
 	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
@@ -87,6 +87,7 @@ func newAdaptiveRouter(testingInstance *testing.T, mode string) *gin.Engine {
 		LogLevel:      logLevelDebug,
 		WorkerCount:   1,
 		QueueSize:     8,
+		Endpoints:     endpointConfiguration,
 	}, logger.Sugar())
 	if buildRouterError != nil {
 		testingInstance.Fatalf("BuildRouter failed: %v", buildRouterError)

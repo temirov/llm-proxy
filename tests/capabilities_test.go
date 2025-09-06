@@ -69,9 +69,10 @@ func TestIntegration_OmitsDisallowedParameters(testingInstance *testing.T) {
 			}))
 			defer openAIServer.Close()
 
-			proxy.DefaultEndpoints.SetResponsesURL(openAIServer.URL + openAIResponsesPath)
+			endpointConfiguration := proxy.NewEndpoints()
+			endpointConfiguration.SetResponsesURL(openAIServer.URL + openAIResponsesPath)
 			proxy.HTTPClient = openAIServer.Client()
-			subTestInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
+			subTestInstance.Cleanup(func() { proxy.HTTPClient = http.DefaultClient })
 
 			logger, _ := zap.NewDevelopment()
 			defer logger.Sync()
@@ -82,6 +83,7 @@ func TestIntegration_OmitsDisallowedParameters(testingInstance *testing.T) {
 				LogLevel:      logLevel,
 				WorkerCount:   1,
 				QueueSize:     4,
+				Endpoints:     endpointConfiguration,
 			}, logger.Sugar())
 			if buildRouterError != nil {
 				subTestInstance.Fatalf("BuildRouter error: %v", buildRouterError)

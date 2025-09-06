@@ -48,8 +48,8 @@ func NewSessionMockServer(finalResponseJSON string) *httptest.Server {
 // NewTestRouter creates a pre-configured router for integration tests.
 func NewTestRouter(t *testing.T, serverURL string) *gin.Engine {
 	t.Helper()
-	proxy.DefaultEndpoints.SetResponsesURL(serverURL)
-	t.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
+	endpointConfiguration := proxy.NewEndpoints()
+	endpointConfiguration.SetResponsesURL(serverURL)
 
 	logger, _ := zap.NewDevelopment()
 	t.Cleanup(func() { _ = logger.Sync() })
@@ -62,6 +62,7 @@ func NewTestRouter(t *testing.T, serverURL string) *gin.Engine {
 		QueueSize:                  1,
 		RequestTimeoutSeconds:      TestTimeout,
 		UpstreamPollTimeoutSeconds: TestTimeout,
+		Endpoints:                  endpointConfiguration,
 	}, logger.Sugar())
 	if err != nil {
 		t.Fatalf("BuildRouter error: %v", err)

@@ -13,11 +13,11 @@ import (
 // newIntegrationServerWithTimeout builds the application server pointing at the stub OpenAI server with a configurable request timeout.
 func newIntegrationServerWithTimeout(testingInstance *testing.T, openAIServer *httptest.Server, requestTimeoutSeconds int) *httptest.Server {
 	testingInstance.Helper()
-	proxy.DefaultEndpoints.SetModelsURL(openAIServer.URL + integrationModelsPath)
-	proxy.DefaultEndpoints.SetResponsesURL(openAIServer.URL + integrationResponsesPath)
+	endpointConfiguration := proxy.NewEndpoints()
+	endpointConfiguration.SetModelsURL(openAIServer.URL + integrationModelsPath)
+	endpointConfiguration.SetResponsesURL(openAIServer.URL + integrationResponsesPath)
 	proxy.HTTPClient = openAIServer.Client()
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetModelsURL() })
-	testingInstance.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
+	testingInstance.Cleanup(func() { proxy.HTTPClient = http.DefaultClient })
 	logger, _ := zap.NewDevelopment()
 	testingInstance.Cleanup(func() { _ = logger.Sync() })
 	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
@@ -27,6 +27,7 @@ func newIntegrationServerWithTimeout(testingInstance *testing.T, openAIServer *h
 		WorkerCount:           1,
 		QueueSize:             4,
 		RequestTimeoutSeconds: requestTimeoutSeconds,
+		Endpoints:             endpointConfiguration,
 	}, logger.Sugar())
 	if buildRouterError != nil {
 		testingInstance.Fatalf(buildRouterErrorFormat, buildRouterError)

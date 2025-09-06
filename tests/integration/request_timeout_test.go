@@ -26,11 +26,11 @@ func makeTimeoutHTTPClient(testingInstance *testing.T) *http.Client {
 	return &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 			switch {
-			case request.URL.String() == proxy.DefaultEndpoints.GetModelsURL():
+			case request.URL.String() == mockModelsURL:
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(modelsListBody)), Header: make(http.Header)}, nil
-			case strings.HasPrefix(request.URL.String(), proxy.DefaultEndpoints.GetModelsURL()+"/"):
+			case strings.HasPrefix(request.URL.String(), mockModelsURL+"/"):
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadataTemperatureTools)), Header: make(http.Header)}, nil
-			case request.URL.String() == proxy.DefaultEndpoints.GetResponsesURL():
+			case request.URL.String() == mockResponsesURL:
 				select {
 				case <-request.Context().Done():
 					return nil, request.Context().Err()
@@ -52,8 +52,9 @@ func TestIntegrationUpstreamRequestTimeoutTriggersGatewayTimeout(testingInstance
 	testCases := []struct{ name string }{{name: "gateway_timeout"}}
 	for _, testCase := range testCases {
 		testingInstance.Run(testCase.name, func(subTest *testing.T) {
-			configureProxy(subTest, makeTimeoutHTTPClient(subTest))
-			router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: logLevelDebug, WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: timeoutRequestTimeout}, newLogger(subTest))
+			client := makeTimeoutHTTPClient(subTest)
+			endpointConfiguration := configureProxy(subTest, client)
+			router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: logLevelDebug, WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: timeoutRequestTimeout, Endpoints: endpointConfiguration}, newLogger(subTest))
 			if buildError != nil {
 				subTest.Fatalf("BuildRouter failed: %v", buildError)
 			}

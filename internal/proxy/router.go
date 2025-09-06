@@ -38,6 +38,9 @@ func BuildRouter(configuration Configuration, structuredLogger *zap.SugaredLogge
 	}
 
 	configuration.ApplyTunables()
+	if configuration.Endpoints == nil {
+		configuration.Endpoints = NewEndpoints()
+	}
 
 	validator, validatorError := newModelValidator()
 	if validatorError != nil {
@@ -60,6 +63,7 @@ func BuildRouter(configuration Configuration, structuredLogger *zap.SugaredLogge
 		go func() {
 			for pending := range taskQueue {
 				text, requestError := openAIRequest(
+					configuration.Endpoints,
 					configuration.OpenAIKey,
 					pending.model,
 					pending.prompt,
