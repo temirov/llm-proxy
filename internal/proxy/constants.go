@@ -47,6 +47,8 @@ const (
 	errorQueueFull = "request queue full"
 
 	toolTypeWebSearch = "web_search"
+	// reasoningEffortMedium denotes a medium reasoning effort level.
+	reasoningEffortMedium = "medium"
 
 	keyRole = "role"
 	keyUser = "user"
