@@ -18,8 +18,8 @@ const (
 	// DefaultModel is the model identifier used when the client does not supply one.
 	DefaultModel = ModelNameGPT41
 
-	DefaultRequestTimeoutSeconds      = 60 // overall app-side request timeout
-	DefaultUpstreamPollTimeoutSeconds = 20 // poll budget after "incomplete"
+	DefaultRequestTimeoutSeconds      = 180 // overall app-side request timeout
+	DefaultUpstreamPollTimeoutSeconds = 60  // poll budget after "incomplete"
 	DefaultMaxOutputTokens            = 1024
 )
 

@@ -8,30 +8,24 @@ import (
 	"go.uber.org/zap"
 )
 
-// Test string constants.
-const (
-	serviceSecretValue           = "sekret"
-	openAIKeyValue               = "sk-test"
-	messageBuildRouterError      = "BuildRouter error: %v"
-	messageUnexpectedPollTimeout = "upstreamPollTimeout=%v want=%v"
-)
-
-// TestBuildRouterAppliesDefaultUpstreamPollTimeout verifies that BuildRouter sets the upstream poll timeout to the default value when the configuration omits UpstreamPollTimeoutSeconds.
+// TestBuildRouterAppliesDefaultUpstreamPollTimeout verifies that BuildRouter sets the
+// upstream poll timeout to the default value when the configuration omits it.
 func TestBuildRouterAppliesDefaultUpstreamPollTimeout(testFramework *testing.T) {
 	loggerInstance, _ := zap.NewDevelopment()
-	defer loggerInstance.Sync()
+	defer func() { _ = loggerInstance.Sync() }()
 
 	previousPollTimeout := proxy.UpstreamPollTimeout()
 	defer proxy.SetUpstreamPollTimeout(previousPollTimeout)
 
 	_, buildRouterError := proxy.BuildRouter(proxy.Configuration{
-		ServiceSecret:              serviceSecretValue,
-		OpenAIKey:                  openAIKeyValue,
+		ServiceSecret:              TestSecret,
+		OpenAIKey:                  TestAPIKey,
 		LogLevel:                   proxy.LogLevelDebug,
 		WorkerCount:                1,
 		QueueSize:                  1,
-		UpstreamPollTimeoutSeconds: 0,
+		UpstreamPollTimeoutSeconds: 0, // Explicitly set to 0 to test default behavior
 	}, loggerInstance.Sugar())
+
 	if buildRouterError != nil {
 		testFramework.Fatalf(messageBuildRouterError, buildRouterError)
 	}
