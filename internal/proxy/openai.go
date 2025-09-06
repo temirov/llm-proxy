@@ -224,10 +224,10 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 // continueResponse signals to the API that a response session should proceed (legacy non-terminal case).
 func continueResponse(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) error {
 	resourceURL := DefaultEndpoints.GetResponsesURL() + "/" + responseIdentifier + "/continue"
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	requestContext, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 
-	httpRequest, buildError := buildAuthorizedJSONRequest(ctx, http.MethodPost, resourceURL, openAIKey, nil)
+	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, resourceURL, openAIKey, nil)
 	if buildError != nil {
 		return buildError
 	}
@@ -338,10 +338,10 @@ func pollResponseUntilDone(openAIKey string, responseIdentifier string, structur
 // fetchResponseByID retrieves a response by identifier and reports whether the response is complete.
 func fetchResponseByID(deadline time.Time, openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) (string, bool, error) {
 	resourceURL := DefaultEndpoints.GetResponsesURL() + "/" + responseIdentifier
-	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	requestContext, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 
-	httpRequest, buildError := buildAuthorizedJSONRequest(ctx, http.MethodGet, resourceURL, openAIKey, nil)
+	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodGet, resourceURL, openAIKey, nil)
 	if buildError != nil {
 		return constants.EmptyString, false, buildError
 	}
