@@ -95,7 +95,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 		return constants.EmptyString, errors.New(errorOpenAIRequest)
 	}
 
-	structuredLogger.Debugw("OpenAI initial response body", logFieldResponseBody, string(responseBytes))
+	structuredLogger.Debugw(logEventOpenAIInitialResponseBody, logFieldResponseBody, string(responseBytes))
 
 	var decodedObject map[string]any
 	_ = json.Unmarshal(responseBytes, &decodedObject)
@@ -132,7 +132,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 	if isTerminalStatus && apiStatus == statusCompleted && !hasFinalMessage(responseBytes) {
 		// Tool phase finished without a final assistant message.
 		forcedSynthesis = true
-		structuredLogger.Debugw("response is 'completed' but lacks final message; starting synthesis continuation")
+		structuredLogger.Debugw(logEventMissingFinalMessage)
 	}
 
 	// If the state is non-terminal OR we must force a synthesis continuation, proceed accordingly.
@@ -180,7 +180,7 @@ func openAIRequest(openAIKey string, modelIdentifier string, userPrompt string, 
 
 		// --- Fallback: one more synthesis continuation if still no text ---
 		if forcedSynthesis {
-			structuredLogger.Debugw("first synthesis continuation yielded no text; retrying once with stricter settings")
+			structuredLogger.Debugw(logEventRetryingSynthesis)
 			newID, synthErr := startSynthesisContinuation(openAIKey, targetResponseID, modelIdentifier, structuredLogger /*retryOrdinal=*/, 1)
 			if synthErr != nil {
 				structuredLogger.Errorw(

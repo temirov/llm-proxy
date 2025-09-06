@@ -96,13 +96,19 @@ const (
 	// logFieldExpectedFingerprint identifies the fingerprint of the expected client key.
 	logFieldExpectedFingerprint = "expected_fingerprint"
 
-	logEventOpenAIRequestError            = "OpenAI request error"
-	logEventOpenAIResponse                = "OpenAI API response"
-	logEventOpenAIModelsList              = "OpenAI models list"
-	logEventOpenAIModelsListError         = "OpenAI models list error"
-	logEventOpenAIModelCapabilitiesError  = "OpenAI model capabilities error"
-	logEventOpenAIPollError               = "OpenAI poll error"
-	logEventOpenAIContinueError           = "OpenAI continue error"
+	logEventOpenAIRequestError           = "OpenAI request error"
+	logEventOpenAIResponse               = "OpenAI API response"
+	logEventOpenAIModelsList             = "OpenAI models list"
+	logEventOpenAIModelsListError        = "OpenAI models list error"
+	logEventOpenAIModelCapabilitiesError = "OpenAI model capabilities error"
+	logEventOpenAIPollError              = "OpenAI poll error"
+	logEventOpenAIContinueError          = "OpenAI continue error"
+	// logEventOpenAIInitialResponseBody records the body of the initial response from OpenAI.
+	logEventOpenAIInitialResponseBody = "OpenAI initial response body"
+	// logEventMissingFinalMessage indicates that the response completed without a final assistant message.
+	logEventMissingFinalMessage = "response is 'completed' but lacks final message; starting synthesis continuation"
+	// logEventRetryingSynthesis reports a retry of synthesis due to an empty initial attempt.
+	logEventRetryingSynthesis             = "first synthesis continuation yielded no text; retrying once with stricter settings"
 	logEventParseOpenAIResponseFailed     = "parse OpenAI response failed"
 	logEventForbiddenRequest              = "forbidden request"
 	logEventRequestReceived               = "request received"
