@@ -2,3 +2,4 @@
 bin/
 *.iml
 .env
+release_notes.md
