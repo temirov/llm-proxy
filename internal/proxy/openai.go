@@ -387,6 +387,8 @@ type searchAction struct {
 	Query string `json:"query"`
 }
 
+// joinParts creates a single string by joining the trimmed text from each
+// provided content part using a line break when multiple parts contain text.
 func joinParts(parts []contentPart) string {
 	var builder strings.Builder
 	for _, part := range parts {
