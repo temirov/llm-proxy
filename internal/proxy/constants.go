@@ -63,6 +63,12 @@ const (
 	// responseTypeWebSearchCall identifies a web search tool call in the output array.
 	responseTypeWebSearchCall = "web_search_call"
 
+	// outputPartType identifies an output_text part in a content array.
+	outputPartType = "output_text"
+
+	// textPartType identifies a plain text part in a content array.
+	textPartType = "text"
+
 	// fallbackFinalAnswerFormat formats a message when the model does not provide a final answer.
 	fallbackFinalAnswerFormat = "Model did not provide a final answer. Last web search: \"%s\""
 

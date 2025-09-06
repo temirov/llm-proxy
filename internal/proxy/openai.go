@@ -390,7 +390,7 @@ type searchAction struct {
 func joinParts(parts []contentPart) string {
 	var builder strings.Builder
 	for _, part := range parts {
-		if part.Type == "output_text" || part.Type == "text" {
+		if part.Type == outputPartType || part.Type == textPartType {
 			text := strings.TrimSpace(part.Text)
 			if text != constants.EmptyString {
 				if builder.Len() > 0 {
