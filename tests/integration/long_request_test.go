@@ -22,16 +22,16 @@ const (
 )
 
 // makeSlowHTTPClient returns an HTTP client that simulates a delayed upstream response.
-func makeSlowHTTPClient(testingInstance *testing.T) *http.Client {
+func makeSlowHTTPClient(testingInstance *testing.T, endpoints *proxy.Endpoints) *http.Client {
 	testingInstance.Helper()
 	return &http.Client{
 		Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
 			switch {
-			case httpRequest.URL.String() == proxy.DefaultEndpoints.GetModelsURL():
+			case httpRequest.URL.String() == endpoints.GetModelsURL():
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(modelsListBody)), Header: make(http.Header)}, nil
-			case strings.HasPrefix(httpRequest.URL.String(), proxy.DefaultEndpoints.GetModelsURL()+"/"):
+			case strings.HasPrefix(httpRequest.URL.String(), endpoints.GetModelsURL()+"/"):
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadataTemperatureTools)), Header: make(http.Header)}, nil
-			case httpRequest.URL.String() == proxy.DefaultEndpoints.GetResponsesURL():
+			case httpRequest.URL.String() == endpoints.GetResponsesURL():
 				time.Sleep(responseDelay)
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"output_text":"` + expectedResponseBody + `"}`)), Header: make(http.Header)}, nil
 			default:
@@ -49,8 +49,9 @@ func TestIntegrationResponseDeliveredAfterDelay(testingInstance *testing.T) {
 	testCases := []struct{ name string }{{name: "delayed_response"}}
 	for _, testCase := range testCases {
 		testingInstance.Run(testCase.name, func(subTest *testing.T) {
-			configureProxy(subTest, makeSlowHTTPClient(subTest))
-			router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: logLevelDebug, WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: requestTimeoutSecondsDefault}, newLogger(subTest))
+			endpoints := proxy.NewEndpoints()
+			configureProxy(subTest, makeSlowHTTPClient(subTest, endpoints), endpoints)
+			router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: logLevelDebug, WorkerCount: 1, QueueSize: 8, RequestTimeoutSeconds: requestTimeoutSecondsDefault, Endpoints: endpoints}, newLogger(subTest))
 			if buildError != nil {
 				subTest.Fatalf(buildRouterFailedFormat, buildError)
 			}

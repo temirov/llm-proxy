@@ -26,20 +26,20 @@ const (
 )
 
 // makeDelayedHTTPClient returns an HTTP client that delays responses to simulate a slow upstream server.
-func makeDelayedHTTPClient(testingInstance *testing.T) *http.Client {
+func makeDelayedHTTPClient(testingInstance *testing.T, endpoints *proxy.Endpoints) *http.Client {
 	testingInstance.Helper()
 	return &http.Client{Transport: roundTripperFunc(func(httpRequest *http.Request) (*http.Response, error) {
 		switch {
-		case httpRequest.URL.String() == proxy.DefaultEndpoints.GetModelsURL():
+		case httpRequest.URL.String() == endpoints.GetModelsURL():
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(availableModelsBody)), Header: make(http.Header)}, nil
-		case strings.HasPrefix(httpRequest.URL.String(), proxy.DefaultEndpoints.GetModelsURL()+"/"):
+		case strings.HasPrefix(httpRequest.URL.String(), endpoints.GetModelsURL()+"/"):
 			modelIdentifier := strings.TrimPrefix(httpRequest.URL.Path, integrationModelsPath+"/")
 			metadata := metadataEmpty
 			if modelIdentifier == proxy.ModelNameGPT41 {
 				metadata = metadataTemperatureTools
 			}
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(metadata)), Header: make(http.Header)}, nil
-		case httpRequest.URL.String() == proxy.DefaultEndpoints.GetResponsesURL():
+		case httpRequest.URL.String() == endpoints.GetResponsesURL():
 			time.Sleep(queueRequestDelay)
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"output_text":"` + integrationOKBody + `"}`)), Header: make(http.Header)}, nil
 		default:
@@ -52,8 +52,9 @@ func makeDelayedHTTPClient(testingInstance *testing.T) *http.Client {
 // TestIntegrationHighLoadQueue verifies queue saturation handling.
 func TestIntegrationHighLoadQueue(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
-	client := makeDelayedHTTPClient(testingInstance)
-	configureProxy(testingInstance, client)
+	endpoints := proxy.NewEndpoints()
+	client := makeDelayedHTTPClient(testingInstance, endpoints)
+	configureProxy(testingInstance, client, endpoints)
 	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret:         serviceSecretValue,
 		OpenAIKey:             openAIKeyValue,
@@ -61,6 +62,7 @@ func TestIntegrationHighLoadQueue(testingInstance *testing.T) {
 		WorkerCount:           singleWorkerCount,
 		QueueSize:             proxy.DefaultQueueSize,
 		RequestTimeoutSeconds: requestTimeoutSeconds,
+		Endpoints:             endpoints,
 	}, newLogger(testingInstance))
 	if buildRouterError != nil {
 		testingInstance.Fatalf(buildRouterFailedFormat, buildRouterError)

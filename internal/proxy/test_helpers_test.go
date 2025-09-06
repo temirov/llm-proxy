@@ -14,9 +14,8 @@ import (
 
 // Test constants used across the entire test suite for this package.
 const (
-	TestJobID                    = "resp_test_12345"
-	messageBuildRouterError      = "BuildRouter error: %v"
-	messageUnexpectedPollTimeout = "upstreamPollTimeout=%v want=%v"
+	TestJobID               = "resp_test_12345"
+	messageBuildRouterError = "BuildRouter error: %v"
 )
 
 // NewSessionMockServer creates a reusable httptest.Server that correctly
@@ -48,8 +47,8 @@ func NewSessionMockServer(finalResponseJSON string) *httptest.Server {
 // NewTestRouter creates a pre-configured router for integration tests.
 func NewTestRouter(t *testing.T, serverURL string) *gin.Engine {
 	t.Helper()
-	proxy.DefaultEndpoints.SetResponsesURL(serverURL)
-	t.Cleanup(func() { proxy.DefaultEndpoints.ResetResponsesURL() })
+	endpoints := proxy.NewEndpoints()
+	endpoints.SetResponsesURL(serverURL)
 
 	logger, _ := zap.NewDevelopment()
 	t.Cleanup(func() { _ = logger.Sync() })
@@ -62,6 +61,7 @@ func NewTestRouter(t *testing.T, serverURL string) *gin.Engine {
 		QueueSize:                  1,
 		RequestTimeoutSeconds:      TestTimeout,
 		UpstreamPollTimeoutSeconds: TestTimeout,
+		Endpoints:                  endpoints,
 	}, logger.Sugar())
 	if err != nil {
 		t.Fatalf("BuildRouter error: %v", err)

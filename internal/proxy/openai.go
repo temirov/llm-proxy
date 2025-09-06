@@ -24,9 +24,7 @@ type HTTPDoer interface {
 
 var (
 	// HTTPClient is the default HTTPDoer implementation that delegates to http.DefaultClient.
-	HTTPClient          HTTPDoer = http.DefaultClient
-	maxOutputTokens              = DefaultMaxOutputTokens
-	upstreamPollTimeout time.Duration
+	HTTPClient HTTPDoer = http.DefaultClient
 )
 
 // OpenAIClient provides access to the OpenAI responses API with configurable
@@ -34,16 +32,17 @@ var (
 type OpenAIClient struct {
 	httpClient          HTTPDoer
 	endpoints           *Endpoints
+	requestTimeout      time.Duration
 	maxOutputTokens     int
 	upstreamPollTimeout time.Duration
 }
 
-// NewOpenAIClient constructs an OpenAIClient initialized with the supplied
-// components.
-func NewOpenAIClient(httpClient HTTPDoer, endpoints *Endpoints, maxTokens int, pollTimeout time.Duration) *OpenAIClient {
+// NewOpenAIClient constructs an OpenAIClient initialized with the supplied components.
+func NewOpenAIClient(httpClient HTTPDoer, endpoints *Endpoints, requestTimeout time.Duration, maxTokens int, pollTimeout time.Duration) *OpenAIClient {
 	return &OpenAIClient{
 		httpClient:          httpClient,
 		endpoints:           endpoints,
+		requestTimeout:      requestTimeout,
 		maxOutputTokens:     maxTokens,
 		upstreamPollTimeout: pollTimeout,
 	}
@@ -53,12 +52,6 @@ const (
 	synthesisInstructionPrimary = "Now synthesize the final answer with concise citations."
 	synthesisInstructionRetry   = "Produce the final answer now as plain text with concise citations. Do not call tools. Do not include hidden reasoning."
 )
-
-// UpstreamPollTimeout returns the current upstream poll timeout.
-func UpstreamPollTimeout() time.Duration { return upstreamPollTimeout }
-
-// SetUpstreamPollTimeout overrides the upstream poll timeout value.
-func SetUpstreamPollTimeout(newTimeout time.Duration) { upstreamPollTimeout = newTimeout }
 
 // hasFinalMessage checks if the response payload contains the terminal assistant message.
 func hasFinalMessage(rawPayload []byte) bool {
@@ -97,14 +90,14 @@ func (client *OpenAIClient) openAIRequest(openAIKey string, modelIdentifier stri
 	}
 	combinedPrompt.WriteString(userPrompt)
 
-	payload := BuildRequestPayload(modelIdentifier, combinedPrompt.String(), webSearchEnabled)
+	payload := BuildRequestPayload(modelIdentifier, combinedPrompt.String(), webSearchEnabled, client.maxOutputTokens)
 	payloadBytes, marshalError := json.Marshal(payload)
 	if marshalError != nil {
 		structuredLogger.Errorw(logEventMarshalRequestPayload, constants.LogFieldError, marshalError)
 		return constants.EmptyString, marshalError
 	}
 
-	requestContext, cancelRequest := context.WithTimeout(context.Background(), requestTimeout)
+	requestContext, cancelRequest := context.WithTimeout(context.Background(), client.requestTimeout)
 	defer cancelRequest()
 	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, client.endpoints.GetResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
 	if buildError != nil {
@@ -244,7 +237,7 @@ func (client *OpenAIClient) openAIRequest(openAIKey string, modelIdentifier stri
 // continueResponse signals to the API that a response session should proceed (legacy non-terminal case).
 func (client *OpenAIClient) continueResponse(openAIKey string, responseIdentifier string, structuredLogger *zap.SugaredLogger) error {
 	resourceURL := client.endpoints.GetResponsesURL() + "/" + responseIdentifier + "/continue"
-	requestContext, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	requestContext, cancel := context.WithTimeout(context.Background(), client.requestTimeout)
 	defer cancel()
 
 	httpRequest, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, resourceURL, openAIKey, nil)
@@ -308,7 +301,7 @@ func (client *OpenAIClient) startSynthesisContinuation(openAIKey string, previou
 	}
 	payloadBytes, _ := json.Marshal(payload)
 
-	requestContext, cancelRequest := context.WithTimeout(context.Background(), requestTimeout)
+	requestContext, cancelRequest := context.WithTimeout(context.Background(), client.requestTimeout)
 	defer cancelRequest()
 	request, buildError := buildAuthorizedJSONRequest(requestContext, http.MethodPost, client.endpoints.GetResponsesURL(), openAIKey, bytes.NewReader(payloadBytes))
 	if buildError != nil {

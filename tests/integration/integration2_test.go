@@ -30,14 +30,16 @@ func TestClientResponseDelivery(testingInstance *testing.T) {
 	}
 	for _, testCase := range testCases {
 		testingInstance.Run(testCase.name, func(subTest *testing.T) {
-			client, captured := makeHTTPClient(subTest, testCase.webSearch)
-			configureProxy(subTest, client)
+			endpoints := proxy.NewEndpoints()
+			client, captured := makeHTTPClient(subTest, testCase.webSearch, endpoints)
+			configureProxy(subTest, client, endpoints)
 			router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 				ServiceSecret: serviceSecretValue,
 				OpenAIKey:     openAIKeyValue,
 				LogLevel:      logLevelDebug,
 				WorkerCount:   1,
 				QueueSize:     8,
+				Endpoints:     endpoints,
 			}, newLogger(subTest))
 			if buildRouterError != nil {
 				subTest.Fatalf(buildRouterFailedFormat, buildRouterError)
@@ -114,9 +116,12 @@ func TestIntegrationConfiguration(testingInstance *testing.T) {
 				}
 				return
 			}
-			client, _ := makeHTTPClient(subTest, false)
-			configureProxy(subTest, client)
-			router, buildRouterError := proxy.BuildRouter(testCase.config, newLogger(subTest))
+			endpoints := proxy.NewEndpoints()
+			client, _ := makeHTTPClient(subTest, false, endpoints)
+			configureProxy(subTest, client, endpoints)
+			config := testCase.config
+			config.Endpoints = endpoints
+			router, buildRouterError := proxy.BuildRouter(config, newLogger(subTest))
 			if buildRouterError != nil {
 				subTest.Fatalf(buildRouterFailedFormat, buildRouterError)
 			}

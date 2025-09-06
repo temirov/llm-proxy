@@ -16,9 +16,10 @@ const missingPromptErrorMessage = "missing prompt parameter"
 // TestRequestWithoutPromptReturnsMissingPromptError ensures that a request lacking the prompt query parameter yields a 400 status with the missing prompt error message.
 func TestRequestWithoutPromptReturnsMissingPromptError(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
-	client, _ := makeHTTPClient(testingInstance, false)
-	configureProxy(testingInstance, client)
-	router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: logLevelDebug, WorkerCount: 1, QueueSize: 8}, newLogger(testingInstance))
+	endpoints := proxy.NewEndpoints()
+	client, _ := makeHTTPClient(testingInstance, false, endpoints)
+	configureProxy(testingInstance, client, endpoints)
+	router, buildError := proxy.BuildRouter(proxy.Configuration{ServiceSecret: serviceSecretValue, OpenAIKey: openAIKeyValue, LogLevel: logLevelDebug, WorkerCount: 1, QueueSize: 8, Endpoints: endpoints}, newLogger(testingInstance))
 	if buildError != nil {
 		testingInstance.Fatalf("BuildRouter failed: %v", buildError)
 	}

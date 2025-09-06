@@ -85,7 +85,7 @@ func TestBuildRequestPayload(testFramework *testing.T) {
 
 	for _, testCase := range testCases {
 		testFramework.Run(testCase.name, func(subTestFramework *testing.T) {
-			payload := proxy.BuildRequestPayload(testCase.modelIdentifier, promptValue, testCase.webSearchEnabled)
+			payload := proxy.BuildRequestPayload(testCase.modelIdentifier, promptValue, testCase.webSearchEnabled, proxy.DefaultMaxOutputTokens)
 			payloadBytes, marshalError := json.Marshal(payload)
 			if marshalError != nil {
 				subTestFramework.Fatalf(marshalPayloadErrorFormat, marshalError)

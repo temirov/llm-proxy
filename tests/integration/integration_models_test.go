@@ -21,14 +21,16 @@ func TestIntegrationModelSpecSuppression(testingInstance *testing.T) {
 	}{{name: "gpt_5_mini", model: proxy.ModelNameGPT5Mini}}
 	for _, testCase := range testCases {
 		testingInstance.Run(testCase.name, func(subTest *testing.T) {
-			client, captured := makeHTTPClient(subTest, true)
-			configureProxy(subTest, client)
+			endpoints := proxy.NewEndpoints()
+			client, captured := makeHTTPClient(subTest, true, endpoints)
+			configureProxy(subTest, client, endpoints)
 			router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 				ServiceSecret: serviceSecretValue,
 				OpenAIKey:     openAIKeyValue,
 				LogLevel:      logLevelDebug,
 				WorkerCount:   1,
 				QueueSize:     8,
+				Endpoints:     endpoints,
 			}, newLogger(subTest))
 			if buildRouterError != nil {
 				subTest.Fatalf(buildRouterFailedFormat, buildRouterError)
@@ -69,14 +71,16 @@ func TestIntegrationModelSpecSuppression(testingInstance *testing.T) {
 // TestIntegrationGPT5TemperatureSuppression verifies that temperature is omitted and tools retained for GPT-5.
 func TestIntegrationGPT5TemperatureSuppression(testingInstance *testing.T) {
 	gin.SetMode(gin.TestMode)
-	client, captured := makeHTTPClient(testingInstance, true)
-	configureProxy(testingInstance, client)
+	endpoints := proxy.NewEndpoints()
+	client, captured := makeHTTPClient(testingInstance, true, endpoints)
+	configureProxy(testingInstance, client, endpoints)
 	router, buildRouterError := proxy.BuildRouter(proxy.Configuration{
 		ServiceSecret: serviceSecretValue,
 		OpenAIKey:     openAIKeyValue,
 		LogLevel:      logLevelDebug,
 		WorkerCount:   1,
 		QueueSize:     8,
+		Endpoints:     endpoints,
 	}, newLogger(testingInstance))
 	if buildRouterError != nil {
 		testingInstance.Fatalf(buildRouterFailedFormat, buildRouterError)

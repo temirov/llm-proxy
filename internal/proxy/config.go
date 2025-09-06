@@ -3,7 +3,6 @@ package proxy
 import (
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/temirov/llm-proxy/internal/apperrors"
 	"github.com/temirov/llm-proxy/internal/constants"
@@ -36,6 +35,7 @@ type Configuration struct {
 	RequestTimeoutSeconds      int
 	UpstreamPollTimeoutSeconds int
 	MaxOutputTokens            int
+	Endpoints                  *Endpoints
 }
 
 // validateConfig confirms required settings are present.
@@ -49,12 +49,10 @@ func validateConfig(config Configuration) error {
 	return nil
 }
 
-var requestTimeout = 30 * time.Second
-
 // ErrUpstreamIncomplete indicates that the upstream provider returned an incomplete response before the poll deadline.
 var ErrUpstreamIncomplete = errors.New(errorUpstreamIncomplete)
 
-// ApplyTunables ensures tunable configuration values have sensible defaults and updates package-level parameters.
+// ApplyTunables ensures tunable configuration values have sensible defaults.
 func (configuration *Configuration) ApplyTunables() {
 	if configuration.RequestTimeoutSeconds <= 0 {
 		configuration.RequestTimeoutSeconds = DefaultRequestTimeoutSeconds
@@ -65,7 +63,4 @@ func (configuration *Configuration) ApplyTunables() {
 	if configuration.MaxOutputTokens <= 0 {
 		configuration.MaxOutputTokens = DefaultMaxOutputTokens
 	}
-	requestTimeout = time.Duration(configuration.RequestTimeoutSeconds) * time.Second
-	SetUpstreamPollTimeout(time.Duration(configuration.UpstreamPollTimeoutSeconds) * time.Second)
-	maxOutputTokens = configuration.MaxOutputTokens
 }
