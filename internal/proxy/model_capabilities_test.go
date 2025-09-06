@@ -76,23 +76,23 @@ func TestBuildRequestPayload(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			payload := proxy.BuildRequestPayload(tc.modelIdentifier, prompt, tc.webSearchEnabled)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			payload := proxy.BuildRequestPayload(testCase.modelIdentifier, prompt, testCase.webSearchEnabled)
 			payloadBytes, err := json.Marshal(payload)
 			if err != nil {
 				t.Fatalf("Failed to marshal payload: %v", err)
 			}
 			payloadJSON := string(payloadBytes)
 
-			if tc.expectTemperature != strings.Contains(payloadJSON, `"temperature"`) {
-				t.Errorf("Mismatch in 'temperature' field presence. Got: %s, Want presence: %v", payloadJSON, tc.expectTemperature)
+			if testCase.expectTemperature != strings.Contains(payloadJSON, `"temperature"`) {
+				t.Errorf("Mismatch in 'temperature' field presence. Got: %s, Want presence: %v", payloadJSON, testCase.expectTemperature)
 			}
-			if tc.expectTools != strings.Contains(payloadJSON, `"tools"`) {
-				t.Errorf("Mismatch in 'tools' field presence. Got: %s, Want presence: %v", payloadJSON, tc.expectTools)
+			if testCase.expectTools != strings.Contains(payloadJSON, `"tools"`) {
+				t.Errorf("Mismatch in 'tools' field presence. Got: %s, Want presence: %v", payloadJSON, testCase.expectTools)
 			}
-			if tc.expectTools != strings.Contains(payloadJSON, `"tool_choice"`) {
-				t.Errorf("Mismatch in 'tool_choice' field presence. Got: %s, Want presence: %v", payloadJSON, tc.expectTools)
+			if testCase.expectTools != strings.Contains(payloadJSON, `"tool_choice"`) {
+				t.Errorf("Mismatch in 'tool_choice' field presence. Got: %s, Want presence: %v", payloadJSON, testCase.expectTools)
 			}
 		})
 	}
