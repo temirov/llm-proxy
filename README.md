@@ -77,6 +77,17 @@ curl --get \
   "http://localhost:8080/"
 ```
 
+You can enable web search with GPT-5 by specifying the model:
+
+```shell
+curl --get \
+  --data-urlencode "prompt=Latest research on quantum gravity" \
+  --data-urlencode "key=mysecret" \
+  --data-urlencode "model=gpt-5" \
+  --data-urlencode "web_search=1" \
+  "http://localhost:8080/"
+```
+
 ### Response formats
 
 You can request alternative formats using either the `format` query parameter or
@@ -102,7 +113,7 @@ GET /
 
 Supported models include any listed in `/v1/models` from the OpenAI API
 (e.g. `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`).
-Not all models support tools; for **web search**, use `gpt-4o` or `gpt-4.1`.
+Not all models support tools; for **web search**, use `gpt-4o`, `gpt-4.1`, or `gpt-5`.
 
 ### Model capabilities
 
