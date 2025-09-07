@@ -13,6 +13,8 @@ const (
 	temperatureFieldPresenceMismatch = "Mismatch in 'temperature' field presence. Got: %s, Want presence: %v"
 	toolsFieldPresenceMismatch       = "Mismatch in 'tools' field presence. Got: %s, Want presence: %v"
 	toolChoiceFieldPresenceMismatch  = "Mismatch in 'tool_choice' field presence. Got: %s, Want presence: %v"
+	reasoningFieldPresenceMismatch   = "Mismatch in 'reasoning' field presence. Got: %s, Want presence: %v"
+	reasoningFieldJSONFragment       = `"reasoning"`
 	modelFieldsMismatchFormat        = "model %s fields=%v want=%v"
 	promptValue                      = "hello"
 )
@@ -45,6 +47,7 @@ func TestBuildRequestPayload(testFramework *testing.T) {
 		webSearchEnabled  bool
 		expectTemperature bool
 		expectTools       bool
+		expectReasoning   bool
 	}{
 		{
 			name:              "GPT-5 with web search",
@@ -52,6 +55,7 @@ func TestBuildRequestPayload(testFramework *testing.T) {
 			webSearchEnabled:  true,
 			expectTemperature: false,
 			expectTools:       true,
+			expectReasoning:   true,
 		},
 		{
 			name:              "GPT-5 without web search",
@@ -59,6 +63,7 @@ func TestBuildRequestPayload(testFramework *testing.T) {
 			webSearchEnabled:  false,
 			expectTemperature: false,
 			expectTools:       false,
+			expectReasoning:   false,
 		},
 		{
 			name:              "GPT-4o with web search",
@@ -66,6 +71,7 @@ func TestBuildRequestPayload(testFramework *testing.T) {
 			webSearchEnabled:  true,
 			expectTemperature: true,
 			expectTools:       true,
+			expectReasoning:   false,
 		},
 		{
 			name:              "GPT-4o-mini (no tools)",
@@ -73,6 +79,7 @@ func TestBuildRequestPayload(testFramework *testing.T) {
 			webSearchEnabled:  true, // Ignored
 			expectTemperature: true,
 			expectTools:       false,
+			expectReasoning:   false,
 		},
 		{
 			name:              "GPT-5-mini (base only)",
@@ -80,6 +87,7 @@ func TestBuildRequestPayload(testFramework *testing.T) {
 			webSearchEnabled:  true, // Ignored
 			expectTemperature: false,
 			expectTools:       false,
+			expectReasoning:   false,
 		},
 	}
 
@@ -100,6 +108,10 @@ func TestBuildRequestPayload(testFramework *testing.T) {
 			}
 			if testCase.expectTools != strings.Contains(payloadJSON, `"tool_choice"`) {
 				subTestFramework.Errorf(toolChoiceFieldPresenceMismatch, payloadJSON, testCase.expectTools)
+			}
+			reasoningFieldPresent := strings.Contains(payloadJSON, reasoningFieldJSONFragment)
+			if reasoningFieldPresent != testCase.expectReasoning {
+				subTestFramework.Errorf(reasoningFieldPresenceMismatch, payloadJSON, testCase.expectReasoning)
 			}
 		})
 	}
